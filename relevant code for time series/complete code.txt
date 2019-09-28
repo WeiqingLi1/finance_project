@@ -1,0 +1,783 @@
+library(TSA)
+library(stats)
+library(tseries)
+library(astsa)
+library(stats)
+library(zoo)
+library(xts)
+library(forecast)
+library(Hmisc)
+library(DMwR)
+library(lessR)
+library(urca)
+library(gtools)
+library(chron)
+setwd("C:\\Users\\Li\\Desktop\\workshop and conference\\math modeling\\data\\DDDDDDDDDATA\\2017tidedata")
+tide01<-as.matrix(read.csv("201701tide.csv")[-c(1:12),2])
+tide01t<-as.matrix(read.csv("201701tide.csv")[-c(1:12),1])
+ff.01<-as.chron(tide01t, "%Y-%m-%d %H:%M")
+tide1<-data.frame(ff.01,tide01)
+
+tide02<-as.matrix(read.csv("201702tide.csv")[,2])
+tide02t<-as.matrix(read.csv("201702tide.csv")[,1])
+ff.02<-as.chron(tide02t, "%Y-%m-%d %H:%M")
+tide2<-data.frame(ff.02,tide02)
+
+tide03<-as.matrix(read.csv("201703tide.csv")[,2])
+tide03t<-as.matrix(read.csv("201703tide.csv")[,1])
+ff.03<-as.chron(tide03t, "%Y-%m-%d %H:%M")
+tide3<-data.frame(ff.03,tide03)
+
+tide04<-as.matrix(read.csv("201704tide.csv")[c(1:324),2])
+tide04t<-as.matrix(read.csv("201704tide.csv")[c(1:324),1])
+ff.04<-as.chron(tide04t, "%Y-%m-%d %H:%M")
+tide4<-data.frame(ff.04,tide04)
+
+t<-rbind(tide01t,tide02t,tide03t,tide04t)
+t1<-as.chron(t, "%Y-%m-%d %H:%M")
+tide<-rbind(tide01,tide02,tide03,tide04)
+wave.tide<-data.frame(t1,tide)
+colnames(wave.tide)<-c("time","tide")
+
+wave.height<-as.matrix(read.csv("marray.csv")[8609:11026,2])
+height.time<-as.matrix(read.csv("marray.csv")[8609:11026,1])
+t2<-as.chron(height.time, "%Y/%m/%d %H:%M")
+wave.depth<-as.matrix(read.csv("marray.csv")[8609:11026,5])
+waveh<-data.frame(t2,wave.height,wave.depth)
+colnames(waveh)<-c("time","height","depth")
+
+waveh.train<-waveh[1:2306,2]
+waveh.test<-waveh[2307:2346,2]
+waveh.fc<-waveh[2347:2418,2]
+
+height.tide<-merge(waveh,wave.tide,by="time")
+height.tide1<-data.frame(height.tide[,1],height.tide[,2],rowSums(height.tide[,-c(1,2)]))
+colnames(height.tide1)<-c("time","height","hei+dep")
+
+
+height.tide.train<-height.tide1[1:2306,]
+height.tide.test<-height.tide1[2307:2346,]
+height.tide.total<-height.tide1[1:2346,]
+height.tide.fc<-height.tide1[2347:2418,]
+
+library(compare)
+comparison <- compare(waveh[,1],wave.tide[,1],allowAll=TRUE)
+
+difference <-setdiff(wave.tide$time,comparison$tM)
+r<-c()
+for (i in seq(1,length(difference)))
+{
+  r[i] <- which(difference[i]==wave.tide[,1])
+  print(wave.tide[r[i],1])
+}
+
+################
+############
+#double check
+###########
+###########
+wave.t<-waveh[1:2346,1]
+wave.h<-waveh[1:2346,2]
+ff<-as.chron(wave.t, "%Y/%m/%d %H:%M")
+a<-waveh.train
+plot(ff,wave.h,ylab="wave height (m)", xlab="time (h)",type="l",main="1/1/2017-4/11/2017")
+ts.plot(ts(wave.h),ylab="wave height", xlab="time", main="2017/1/1-2017/4/11 wave height",col="black")
+
+###########################  training  ###############################
+
+ff.train<-ff[1:2306]
+plot(ff.train,waveh.train,type="l",ylab="wave height (m)", xlab="time (h)")
+histogram(waveh.train,xlab="wave.height (m)")
+
+histogram(log(waveh.train),xlab="log(wave.height (m))")
+#curve(dnorm(x, mean=mean(log(waveh.train)), sd=sd(log(waveh.train))), add=TRUE)
+shapiro.test(log(waveh.train))
+qqnorm(log(waveh.train))
+ts.plot(a, col=1:4,  ylab="wave height", xlab="time", main="training set: 2017/1/1-2017/4/8 wave height")
+par(mfrow=c(2,1)) # plot ACFs
+fitt<-lm(a~time(a))
+plot(resid(fitt),ylab="residual of wave height", xlab="time", main="residual plot after linear fit w.r.t. time")
+acf(a)
+pacf(a)
+
+ts.plot(a, col=1:4, ylab=" ", xlab="time", main="wave height")
+plot(a)
+acf(resid(fitt))
+pacf(resid(fitt))
+
+#take 1st difference
+#par(mfrow=c(3,1)) # plot ACFs
+acf(diff(a))
+pacf(diff(a))
+plot(diff(a))
+
+acf(diff(resid(fitt)))
+pacf(diff(resid(fitt)))
+plot(diff(resid(fitt)))
+
+
+fit <- auto.arima(a,d=1,D=0,max.p = 5,max.q = 5,max.P = 5,max.Q = 5,seasonal = TRUE,ic = 'aic')
+summary(fit)
+plot(forecast(fit,h=20),col="black")
+lines(fit$fitted,col="red")
+#source("http://lagrange.math.siu.edu/Olive/tspack.txt")
+aicmat(a,dd=1,pmax=5,qmax=5)
+
+sarima(a, 1,1,2)
+sarima(a, 2,1,1)
+sarima(a, 2,1,0)
+sarima(a, 3,1,0)
+sarima.for(a, 72, 1,1,2)  # forecasts
+
+
+#take log-transformation
+par(mfrow=c(2,1)) # plot ACFs
+acf(log(a))
+pacf(log(a))
+plot(log(a), type = "l")
+
+
+par(mfrow=c(3,1)) # plot ACFs
+acf(diff(log(a)))
+pacf(diff(log(a)))
+plot(diff(log(a)))
+
+fit11 <- auto.arima(log(a),d=1,D=0,max.p = 5,max.q = 5,max.P = 5,max.Q = 5,seasonal = TRUE,ic = 'aic')
+summary(fit11)
+plot(forecast(fit11,h=20),col="black")
+
+
+sarima(log(a),2,1,1)
+sarima.for(log(a),72,2,1,1)  # forecasts
+
+
+aicmat(log(a),dd=1,pmax=3,qmax=3)
+
+sarima(log(a), 2,1,1,main="log-transformed wave height")
+for.sarima(log(a), 2,1,1,main="forcast log-transformed wave height")
+sarima(log(a), 3,1,1)
+sarima(log(a), 2,1,2)
+
+
+fit11 <- arima(log(a), order = c(2,1,1))
+summary(fit11)
+
+fit22 <- arima(log(a), order = c(3,1,1))
+summary(fit2)
+
+fit33 <- arima(log(a), order = c(2,1,2))
+summary(fit3)
+
+
+summary(fit11)
+resplots(log(a),fit11)
+resacfs(fit11, main="acf/pacf for residual plot of diff(log(wave height))")
+tsdiag(fit11)
+FFRRplots(log(a),fit11,fit22)
+
+#take into account of tide
+
+height.tide.train<-height.tide1[1:2306,]
+height.tide.test<-height.tide1[2307:2346,]
+height.tide.fc<-height.tide1[2347:2418,]
+
+b<-ts(height.tide.train[,c(2,3)])
+ts.plot(b,main="tide vs height")
+
+ccf(b[,1], b[,2], ylab = 'CCovF', type = 'covariance',main = " height & tide")
+ccfvalues = ccf(b[,1], b[,2],main = " height & tide")
+ccfvalues
+
+lag1.plot(b[,1],12)
+lag2.plot(b[,2],b[,1],1)
+
+ccf(diff(b[,1]), diff(b[,2]), ylab = 'CCovF', type = 'covariance',main = "diff height & diff tide")
+ccfvalues = ccf(diff(b[,1]), diff(b[,2]),main = " diff height & diff tide")
+
+plot(b[,1],b[,2])
+xreg = ts.intersect(b[,1], b[,2], lag(b[,2],-1),lag(b[,2],1))
+
+auto.arima(xreg[,1], xreg=xreg[,2:4],d=1)
+sarima(xreg[,1],1,1,2, xreg=xreg[,2:4])
+
+auto.arima(log(xreg[,1]), xreg=xreg[,2:4],d=1)
+sarima(log(xreg[,1]),2,1,1,xreg=xreg[,2:4])
+
+
+#xreg<-ts.intersect(b[,1],b[,2],lag(b[,2],-1))
+#arima(xreg[,1],order=c(1,1,2), xreg=xreg[,2:3])
+
+#arimax(1,1,2,tide)
+#xreg<-b[,2]
+fitxx<- auto.arima(b[,1], xreg=xreg,d=1)
+summary(fitxx)
+
+auto.arima(log(xreg[,1]), xreg=xreg[,2:4],d=1,D=0,seasonal = "true")
+auto.arima(log(xreg[,1]), xreg=xreg[,2:4],d=1,D=1,seasonal = "true")
+auto.arima(xreg[,1], xreg=xreg[,2:4],d=1,D=0,seasonal = "true")
+auto.arima(xreg[,1], xreg=xreg[,2:4],d=1,D=1,seasonal = "true")
+#arimax(1,1,2,0,1,1,tide)
+arima(b[,1],order = c(1,1,2), seasonal = list(order = c(0,1,1), period = 12), xreg=xreg)
+
+sarima(b[,1],1,1,2,0,1,1,6, xreg=xreg)
+
+#log transf arimax(1,1,2,0,1,1,tide)
+arima(log(b[,1]),order = c(1,1,2), seasonal = list(order = c(0,1,1), period = 12), xreg=xreg)
+
+sarima(log(b[,1]),1,1,2,0,1,1,6, xreg=xreg)
+###########################  validating  ###############################
+
+waveD1.total = ts(waveh[1:2346,2], start=1, end=2346)
+waveD1.train = ts(waveh[1:2306,2], start=1, end=2306)
+waveD1.valid = ts(waveh[2307:2346,2:3], start=2307,end=2346)
+
+xreg = ts.intersect(b[,1], b[,2], lag(b[,2],-1),lag(b[,2],1))
+
+model1 = arima(log(waveD1.train), order = c(2,1,1))
+model2 = arima(log(waveD1.train),order = c(2,1,1),seasonal = list(order = c(0,0,1), period = 12))
+#model2 = arima(xreg[,1],order = c(1,1,2), xreg=xreg[,2:4])
+#model3 = arima(log(xreg[,1]), order = c(2,1,1), xreg=xreg[,2:4])
+#model4 = arima(log(xreg[,1]),order = c(2,1,1), seasonal = list(order = c(0,1,1), period = 12), xreg=xreg[,2:4])
+model3 = arima(waveD1.train,order = c(1,1,2), xreg=b[,2])
+#model6 = arima(log(xreg[,1]),order = c(2,1,1), xreg=xreg[,2])
+model4 = arima(waveD1.train,order = c(1,1,2), seasonal = list(order = c(0,0,1), period = 12), xreg=b[,2])
+#model7 = arima(log(xreg[,1]),order = c(1,1,2), seasonal = list(order = c(0,0,1), period = 12), xreg=xreg[,2:4])
+
+
+newreg<-ts.intersect(waveD1.valid[,1],waveD1.valid[,2], lag(waveD1.valid[,2],-1),lag(waveD1.valid[,2],1))
+
+
+wavepred1 <- predict(model1, n.ahead = 40, interval="confidence")
+wavepred2 <- predict(model2, n.ahead = 40, interval="confidence") 
+#wavepred3 <- predict(model3, n.ahead = 38, interval="confidence", newxreg=newreg[,2:4])
+#wavepred4 <- predict(model4, n.ahead = 38, interval="confidence", newxreg=newreg[,2:4])
+wavepred3 <- predict(model3, n.ahead = 40, interval="confidence", newxreg=waveD1.valid[,2])
+#wavepred6 <- predict(model6, n.ahead = 38, interval="confidence", newxreg=newreg[,2])
+wavepred4 <- predict(model4, n.ahead = 40, interval="confidence", newxreg=waveD1.valid[,2])
+
+
+MSE.mod1 = mean((exp(wavepred1$pred) - waveD1.valid[,1])^2)
+MSE.mod2 = mean((exp(wavepred2$pred) - waveD1.valid[,1])^2)
+#MSE.mod3 = mean((exp(wavepred3$pred) - waveD1.valid[,1])^2)
+#MSE.mod4 = mean((exp(wavepred4$pred) - waveD1.valid[,1])^2)
+MSE.mod3 = mean((wavepred3$pred - waveD1.valid[,1])^2)
+#MSE.mod6 = mean((exp(wavepred6$pred) - waveD1.valid[,1])^2)
+MSE.mod4 = mean((wavepred4$pred - waveD1.valid[,1])^2)
+
+
+min(MSE.mod1, MSE.mod2,MSE.mod3, MSE.mod4)
+bestmod = wavepred2
+
+#for wave height
+wave.conf.mean <- exp(bestmod$pred)
+wave.conf.lower <- exp(bestmod$pred-2*bestmod$se)
+wave.conf.upper <- exp(bestmod$pred+2*bestmod$se)
+
+plot(waveD1.total)
+lines((waveD1.total - model1$residuals), col="blue")
+
+
+time<-waveh[2307:2346,1]
+plot(wave.conf.mean, ylab = "wave height (m)", ylim = c(0, 4),main="C.I. for wave height in testing set")
+legend("topleft", lty=c(1,1), col=c("blue", "black"), legend = c("pred","truth"))
+
+polygon(c(time(bestmod$pred),rev(time(bestmod$pred))),c(wave.conf.lower,rev(wave.conf.upper)),col="lightblue",border=NA)
+lines(waveD1.valid[,1], col = "black")
+lines(wave.conf.mean, col = "blue")
+lines(wave.conf.lower, lty = "dotted", col = "blue")
+lines(wave.conf.upper, lty = "dotted", col = "blue")
+
+
+
+#for log(wave height)
+wave.conf.mean1 <- bestmod$pred
+wave.conf.lower1 <- bestmod$pred-2*bestmod$se
+wave.conf.upper1 <- bestmod$pred+2*bestmod$se
+
+plot(wave.conf.mean1, ylab = "wave height (m)", ylim = c(-2, 3),main="C.I. for log(wave height) in testing set")
+legend("topleft", lty=c(1,1), col=c("blue", "black"), legend = c("pred","truth"))
+
+polygon(c(time(bestmod$pred),rev(time(bestmod$pred))),c(wave.conf.lower1,rev(wave.conf.upper1)),col="lightblue",border=NA)
+lines(log(waveD1.valid[,1]), col = "black")
+lines(wave.conf.mean1, col = "blue")
+lines(wave.conf.lower1, lty = "dotted", col = "blue")
+lines(wave.conf.upper1, lty = "dotted", col = "blue")
+
+
+#for wave height
+wave.conf.mean <- exp(bestmod$pred)
+wave.conf.lower <- exp(bestmod$pred-2*bestmod$se)
+wave.conf.upper <- exp(bestmod$pred+2*bestmod$se)
+
+plot(waveD1.total)
+lines((waveD1.total - model1$residuals), col="blue")
+
+
+time<-waveh[2307:2346,1]
+plot(wave.conf.mean[1:6], ylab = "wave height (m)", ylim = c(0.35,1.45),main="C.I. for wave height in testing set",type="l")
+legend("topleft", lty=c(1,1), col=c("blue", "black"), legend = c("pred","truth"))
+
+polygon(c(time(bestmod$pred[1:6]),rev(time(bestmod$pred[1:6]))),c(wave.conf.lower[1:6],rev(wave.conf.upper[1:6])),col="lightblue",border=NA)
+lines(waveD1.valid[1:6,1], col = "black")
+lines(wave.conf.mean[1:6], col = "blue")
+lines(wave.conf.lower[1:6], lty = "dotted", col = "blue")
+lines(wave.conf.upper[1:6], lty = "dotted", col = "blue")
+
+MSE.par = mean((exp(bestmod$pred) - waveD1.valid[,1])^2)
+MSE.par
+
+
+##############################  forecasting   ############################
+#model1
+waveD1.fc = ts(waveh[2347:2418,2], start=2347,end=2418)
+new.model1<-arima(log(waveD1.total),order = c(2,1,1))
+fc1 <- predict(new.model1, n.ahead =72, interval="confidence")
+
+
+#model2
+new.model2<-arima(log(waveD1.total),order = c(2,1,1),seasonal = list(order = c(0,0,1), period = 12))
+fc2 <- predict(new.model2, n.ahead =72, interval="confidence")
+
+fc.mat = matrix(0, length(waveD1.fc), 2)
+fc.mat[,1] = exp(fc$pred)
+fc.mat[,2] = exp(fc$se)
+colnames(fc.mat) = c("pred", "se")
+fc.mat
+write.csv(fc.mat, "waveH8marray_notide11.csv")
+
+
+#time<-waveh[2347:2418,1]
+#plot(time,exp(fc$pred),type="l",col="blue", ylim = c(0.3,1.3), ylab = "waveheight (m)")
+#legend("topleft", lty=c(1,1), col=c("black","red","blue"), legend = c("truth","model2","model4"))
+#lines(time,waveD1.fc, col = "black")
+#lines(time,exp(fc$pred), col = "blue")
+#lines(time,exp(fc$pred), col = "red")
+
+
+#model3
+fcmode3=arima(height.tide.total[,2], order = c(1,1,2), xreg=height.tide.total[,3])
+fc3<-predict(fcmode3, n.ahead = 72, interval="confidence", newxreg=height.tide.fc[,3]) 
+
+
+#model4
+#reg.total<-ts.intersect(height.tide.total[,2],height.tide.total[,3])
+#reg.total<-ts.intersect(height.tide.fc[,2],height.tide.fc[,3], lag(waveD1.comb[,2],-1),lag(waveD1.comb[,2],1))
+fcmode4=arima(height.tide.total[,2], order = c(1,1,2), seasonal = list(order = c(0,0,1), period = 12), xreg=height.tide.total[,3])
+#newreg.fc<-ts.intersect(waveD1.fc[,1], waveD1.fc[,2],lag(waveD1.fc[,2],-1),lag(waveD1.fc[,2],1))
+#newreg.fc<-ts.intersect(height.tide.fc[,2],height.tide.fc[,3])
+fc4<-predict(fcmode4, n.ahead = 72, interval="confidence", newxreg=height.tide.fc[,3]) 
+#fc.mat1 = matrix(0, length(waveD1.fc[,1]), 2)
+#fc.mat1[,1] = exp(fc1$pred)
+#fc.mat1[,2] = exp(fc1$se)
+#colnames(fc.mat1) = c("pred", "se")
+#fc.mat1
+#write.csv(fc.mat1, "waveH8marray_tide.csv")
+#ylim =c(0.25,0.35) c(0.2,1.3)
+time<-waveh[2347:2418,1]
+plot(time,fc1$pred,type="l",col="blue", ylim =  c(0.2,1.3), ylab = "waveheight (m)")
+legend("topleft", lty=c(1,1), col=c("black","blue","red","green","yellow"), legend = c("truth","ARIMA","SARIMA (we choose)","ARIMAX","SARIMAX"))
+lines(time,waveD1.fc, col = "black")
+lines(time,exp(fc1$pred), col = "blue")
+lines(time,exp(fc2$pred),col = "red")
+lines(time,fc3$pred, col = "green")
+lines(time,fc4$pred, col = "yellow")
+
+MSE.fc.mod1 = mean((exp(fc1$pred) - waveD1.fc)^2)
+MSE.fc.mod2 = mean((exp(fc2$pred) - waveD1.fc)^2)
+MSE.fc.mod3 = mean((fc3$pred - waveD1.fc)^2)
+MSE.fc.mod4 = mean((fc4$pred - waveD1.fc)^2)
+
+
+
+reg.total<-ts.intersect(height.tide.total[,2],height.tide.total[,3], lag(waveD1.comb[,2],-1),lag(waveD1.comb[,2],1))
+fcmode1=arima(log(reg.total[,1]), order = c(2,1,1), xreg=reg.total[,2])
+newreg.fc<-ts.intersect(waveD1.fc[,1], waveD1.fc[,2],lag(waveD1.fc[,2],-1),lag(waveD1.fc[,2],1))
+fc1<-predict(fcmode1, n.ahead = length(waveD1.fc[,1]), interval="confidence", newxreg=newreg.fc[,2]) 
+fc.mat1 = matrix(0, length(waveD1.fc[,1]), 2)
+fc.mat1[,1] = exp(fc1$pred)
+fc.mat1[,2] = exp(fc1$se)
+colnames(fc.mat1) = c("pred", "se")
+fc.mat1
+write.csv(fc.mat1, "waveH8marray_tide.csv")
+
+
+
+fcmod = arima(log(waveD1.total[1:2346,1]), order = c(2,1,1))
+fc <- predict(fcmod, n.ahead = length(waveD1.fc[,1]), interval="confidence")
+fc.mat = matrix(0, length(waveD1.fc[,1]), 2)
+fc.mat[,1] = exp(fc$pred)
+fc.mat[,2] = exp(fc$se)
+colnames(fc.mat) = c("pred", "se")
+fc.mat
+write.csv(fc.mat, "waveH8marray_notide.csv")
+
+write.csv(waveh[1:2306,], "waveheight.train.csv")
+
+
+
+
+height.tide<-merge(waveh,wave.tide,by="time")
+height.tide1<-data.frame(height.tide[,1],height.tide[,2],rowSums(height.tide[,-c(1,2)]))
+colnames(height.tide1)<-c("time","height","hei+dep")
+
+
+height.tide.train<-height.tide1[1:2306,]
+height.tide.test<-height.tide1[2307:2346,]
+height.tide.total<-height.tide1[1:2346,]
+height.tide.fc<-height.tide1[2347:2418,]
+
+library(compare)
+comparison <- compare(waveh[,1],wave.tide[,1],allowAll=TRUE)
+
+difference <-setdiff(wave.tide$time,comparison$tM)
+r<-c()
+for (i in seq(1,length(difference)))
+  {
+  r[i] <- which(difference[i]==wave.tide[,1])
+  print(wave.tide[r[i],1])
+}
+
+################
+############
+#double check
+###########
+###########
+wave.t<-waveh[1:2346,1]
+wave.h<-waveh[1:2346,2]
+ff<-as.chron(wave.t, "%Y/%m/%d %H:%M")
+a<-waveh.train
+plot(ff,wave.h,ylab="wave height (m)", xlab="time (h)",type="l",main="1/1/2017-4/11/2017")
+ts.plot(ts(wave.h),ylab="wave height", xlab="time", main="2017/1/1-2017/4/11 wave height",col="black")
+
+###########################  training  ###############################
+
+ff.train<-ff[1:2306]
+plot(ff.train,waveh.train,type="l",ylab="wave height (m)", xlab="time (h)")
+histogram(waveh.train,xlab="wave.height (m)")
+
+histogram(log(waveh.train),xlab="log(wave.height (m))")
+#curve(dnorm(x, mean=mean(log(waveh.train)), sd=sd(log(waveh.train))), add=TRUE)
+shapiro.test(log(waveh.train))
+qqnorm(log(waveh.train))
+ts.plot(a, col=1:4,  ylab="wave height", xlab="time", main="training set: 2017/1/1-2017/4/8 wave height")
+par(mfrow=c(2,1)) # plot ACFs
+fitt<-lm(a~time(a))
+plot(resid(fitt),ylab="residual of wave height", xlab="time", main="residual plot after linear fit w.r.t. time")
+acf(a)
+pacf(a)
+
+ts.plot(a, col=1:4, ylab=" ", xlab="time", main="wave height")
+plot(a)
+acf(resid(fitt))
+pacf(resid(fitt))
+
+#take 1st difference
+#par(mfrow=c(3,1)) # plot ACFs
+acf(diff(a))
+pacf(diff(a))
+plot(diff(a))
+
+acf(diff(resid(fitt)))
+pacf(diff(resid(fitt)))
+plot(diff(resid(fitt)))
+
+
+fit <- auto.arima(a,d=1,D=0,max.p = 5,max.q = 5,max.P = 5,max.Q = 5,seasonal = TRUE,ic = 'aic')
+summary(fit)
+plot(forecast(fit,h=20),col="black")
+lines(fit$fitted,col="red")
+#source("http://lagrange.math.siu.edu/Olive/tspack.txt")
+aicmat(a,dd=1,pmax=5,qmax=5)
+
+sarima(a, 1,1,2)
+sarima(a, 2,1,1)
+sarima(a, 2,1,0)
+sarima(a, 3,1,0)
+sarima.for(a, 72, 1,1,2)  # forecasts
+
+
+#take log-transformation
+par(mfrow=c(2,1)) # plot ACFs
+acf(log(a))
+pacf(log(a))
+plot(log(a), type = "l")
+
+
+par(mfrow=c(3,1)) # plot ACFs
+acf(diff(log(a)))
+pacf(diff(log(a)))
+plot(diff(log(a)))
+
+fit11 <- auto.arima(log(a),d=1,D=0,max.p = 5,max.q = 5,max.P = 5,max.Q = 5,seasonal = TRUE,ic = 'aic')
+summary(fit11)
+plot(forecast(fit11,h=20),col="black")
+
+
+sarima(log(a),2,1,1)
+sarima.for(log(a),72,2,1,1)  # forecasts
+
+
+aicmat(log(a),dd=1,pmax=3,qmax=3)
+
+sarima(log(a), 2,1,1,main="log-transformed wave height")
+for.sarima(log(a), 2,1,1,main="forcast log-transformed wave height")
+sarima(log(a), 3,1,1)
+sarima(log(a), 2,1,2)
+
+
+fit11 <- arima(log(a), order = c(2,1,1))
+summary(fit11)
+
+fit22 <- arima(log(a), order = c(3,1,1))
+summary(fit2)
+
+fit33 <- arima(log(a), order = c(2,1,2))
+summary(fit3)
+
+
+summary(fit11)
+resplots(log(a),fit11)
+resacfs(fit11, main="acf/pacf for residual plot of diff(log(wave height))")
+tsdiag(fit11)
+FFRRplots(log(a),fit11,fit22)
+
+#take into account of tide
+
+height.tide.train<-height.tide1[1:2306,]
+height.tide.test<-height.tide1[2307:2346,]
+height.tide.fc<-height.tide1[2347:2418,]
+
+b<-ts(height.tide.train[,c(2,3)])
+ts.plot(b,main="tide vs height")
+
+ccf(b[,1], b[,2], ylab = 'CCovF', type = 'covariance',main = " height & tide")
+ccfvalues = ccf(b[,1], b[,2],main = " height & tide")
+ccfvalues
+
+lag1.plot(b[,1],12)
+lag2.plot(b[,2],b[,1],1)
+
+ccf(diff(b[,1]), diff(b[,2]), ylab = 'CCovF', type = 'covariance',main = "diff height & diff tide")
+ccfvalues = ccf(diff(b[,1]), diff(b[,2]),main = " diff height & diff tide")
+
+plot(b[,1],b[,2])
+xreg = ts.intersect(b[,1], b[,2], lag(b[,2],-1),lag(b[,2],1))
+
+auto.arima(xreg[,1], xreg=xreg[,2:4],d=1)
+sarima(xreg[,1],1,1,2, xreg=xreg[,2:4])
+
+auto.arima(log(xreg[,1]), xreg=xreg[,2:4],d=1)
+sarima(log(xreg[,1]),2,1,1,xreg=xreg[,2:4])
+
+
+#xreg<-ts.intersect(b[,1],b[,2],lag(b[,2],-1))
+#arima(xreg[,1],order=c(1,1,2), xreg=xreg[,2:3])
+
+#arimax(1,1,2,tide)
+#xreg<-b[,2]
+fitxx<- auto.arima(b[,1], xreg=xreg,d=1)
+summary(fitxx)
+
+auto.arima(log(xreg[,1]), xreg=xreg[,2:4],d=1,D=0,seasonal = "true")
+auto.arima(log(xreg[,1]), xreg=xreg[,2:4],d=1,D=1,seasonal = "true")
+auto.arima(xreg[,1], xreg=xreg[,2:4],d=1,D=0,seasonal = "true")
+auto.arima(xreg[,1], xreg=xreg[,2:4],d=1,D=1,seasonal = "true")
+#arimax(1,1,2,0,1,1,tide)
+arima(b[,1],order = c(1,1,2), seasonal = list(order = c(0,1,1), period = 12), xreg=xreg)
+
+sarima(b[,1],1,1,2,0,1,1,6, xreg=xreg)
+
+#log transf arimax(1,1,2,0,1,1,tide)
+arima(log(b[,1]),order = c(1,1,2), seasonal = list(order = c(0,1,1), period = 12), xreg=xreg)
+
+sarima(log(b[,1]),1,1,2,0,1,1,6, xreg=xreg)
+###########################  validating  ###############################
+
+waveD1.total = ts(waveh[1:2346,2], start=1, end=2346)
+waveD1.train = ts(waveh[1:2306,2], start=1, end=2306)
+waveD1.valid = ts(waveh[2307:2346,2:3], start=2307,end=2346)
+
+xreg = ts.intersect(b[,1], b[,2], lag(b[,2],-1),lag(b[,2],1))
+
+model1 = arima(log(waveD1.train), order = c(2,1,1))
+model2 = arima(log(waveD1.train),order = c(2,1,1),seasonal = list(order = c(0,0,1), period = 12))
+#model2 = arima(xreg[,1],order = c(1,1,2), xreg=xreg[,2:4])
+#model3 = arima(log(xreg[,1]), order = c(2,1,1), xreg=xreg[,2:4])
+#model4 = arima(log(xreg[,1]),order = c(2,1,1), seasonal = list(order = c(0,1,1), period = 12), xreg=xreg[,2:4])
+model3 = arima(waveD1.train,order = c(1,1,2), xreg=b[,2])
+#model6 = arima(log(xreg[,1]),order = c(2,1,1), xreg=xreg[,2])
+model4 = arima(waveD1.train,order = c(1,1,2), seasonal = list(order = c(0,0,1), period = 12), xreg=b[,2])
+#model7 = arima(log(xreg[,1]),order = c(1,1,2), seasonal = list(order = c(0,0,1), period = 12), xreg=xreg[,2:4])
+
+
+newreg<-ts.intersect(waveD1.valid[,1],waveD1.valid[,2], lag(waveD1.valid[,2],-1),lag(waveD1.valid[,2],1))
+
+
+wavepred1 <- predict(model1, n.ahead = 40, interval="confidence")
+wavepred2 <- predict(model2, n.ahead = 40, interval="confidence") 
+#wavepred3 <- predict(model3, n.ahead = 38, interval="confidence", newxreg=newreg[,2:4])
+#wavepred4 <- predict(model4, n.ahead = 38, interval="confidence", newxreg=newreg[,2:4])
+wavepred3 <- predict(model3, n.ahead = 40, interval="confidence", newxreg=waveD1.valid[,2])
+#wavepred6 <- predict(model6, n.ahead = 38, interval="confidence", newxreg=newreg[,2])
+wavepred4 <- predict(model4, n.ahead = 40, interval="confidence", newxreg=waveD1.valid[,2])
+
+
+MSE.mod1 = mean((exp(wavepred1$pred) - waveD1.valid[,1])^2)
+MSE.mod2 = mean((exp(wavepred2$pred) - waveD1.valid[,1])^2)
+#MSE.mod3 = mean((exp(wavepred3$pred) - waveD1.valid[,1])^2)
+#MSE.mod4 = mean((exp(wavepred4$pred) - waveD1.valid[,1])^2)
+MSE.mod3 = mean((wavepred3$pred - waveD1.valid[,1])^2)
+#MSE.mod6 = mean((exp(wavepred6$pred) - waveD1.valid[,1])^2)
+MSE.mod4 = mean((wavepred4$pred - waveD1.valid[,1])^2)
+
+
+min(MSE.mod1, MSE.mod2,MSE.mod3, MSE.mod4)
+bestmod = wavepred2
+
+#for wave height
+wave.conf.mean <- exp(bestmod$pred)
+wave.conf.lower <- exp(bestmod$pred-2*bestmod$se)
+wave.conf.upper <- exp(bestmod$pred+2*bestmod$se)
+
+plot(waveD1.total)
+lines((waveD1.total - model1$residuals), col="blue")
+
+
+time<-waveh[2307:2346,1]
+plot(wave.conf.mean, ylab = "wave height (m)", ylim = c(0, 4),main="C.I. for wave height in testing set")
+legend("topleft", lty=c(1,1), col=c("blue", "black"), legend = c("pred","truth"))
+
+polygon(c(time(bestmod$pred),rev(time(bestmod$pred))),c(wave.conf.lower,rev(wave.conf.upper)),col="lightblue",border=NA)
+lines(waveD1.valid[,1], col = "black")
+lines(wave.conf.mean, col = "blue")
+lines(wave.conf.lower, lty = "dotted", col = "blue")
+lines(wave.conf.upper, lty = "dotted", col = "blue")
+
+
+
+#for log(wave height)
+wave.conf.mean1 <- bestmod$pred
+wave.conf.lower1 <- bestmod$pred-2*bestmod$se
+wave.conf.upper1 <- bestmod$pred+2*bestmod$se
+
+plot(wave.conf.mean1, ylab = "wave height (m)", ylim = c(-2, 3),main="C.I. for log(wave height) in testing set")
+legend("topleft", lty=c(1,1), col=c("blue", "black"), legend = c("pred","truth"))
+
+polygon(c(time(bestmod$pred),rev(time(bestmod$pred))),c(wave.conf.lower1,rev(wave.conf.upper1)),col="lightblue",border=NA)
+lines(log(waveD1.valid[,1]), col = "black")
+lines(wave.conf.mean1, col = "blue")
+lines(wave.conf.lower1, lty = "dotted", col = "blue")
+lines(wave.conf.upper1, lty = "dotted", col = "blue")
+
+
+#for wave height
+wave.conf.mean <- exp(bestmod$pred)
+wave.conf.lower <- exp(bestmod$pred-2*bestmod$se)
+wave.conf.upper <- exp(bestmod$pred+2*bestmod$se)
+
+plot(waveD1.total)
+lines((waveD1.total - model1$residuals), col="blue")
+
+
+time<-waveh[2307:2346,1]
+plot(wave.conf.mean[1:6], ylab = "wave height (m)", ylim = c(0.35,1.45),main="C.I. for wave height in testing set",type="l")
+legend("topleft", lty=c(1,1), col=c("blue", "black"), legend = c("pred","truth"))
+
+polygon(c(time(bestmod$pred[1:6]),rev(time(bestmod$pred[1:6]))),c(wave.conf.lower[1:6],rev(wave.conf.upper[1:6])),col="lightblue",border=NA)
+lines(waveD1.valid[1:6,1], col = "black")
+lines(wave.conf.mean[1:6], col = "blue")
+lines(wave.conf.lower[1:6], lty = "dotted", col = "blue")
+lines(wave.conf.upper[1:6], lty = "dotted", col = "blue")
+
+MSE.par = mean((exp(bestmod$pred) - waveD1.valid[,1])^2)
+MSE.par
+
+
+##############################  forecasting   ############################
+#model1
+waveD1.fc= ts(waveh[2347:2418,2], start=2347,end=2418)
+new.model1<-arima(log(waveD1.total),order = c(2,1,1))
+fc1 <- predict(new.model1, n.ahead =72, interval="confidence")
+
+
+#model2
+new.model2<-arima(log(waveD1.total),order = c(2,1,1),seasonal = list(order = c(0,0,1), period = 12))
+fc2 <- predict(new.model2, n.ahead =72, interval="confidence")
+
+fc.mat = matrix(0, length(waveD1.fc), 2)
+fc.mat[,1] = exp(fc$pred)
+fc.mat[,2] = exp(fc$se)
+colnames(fc.mat) = c("pred", "se")
+fc.mat
+write.csv(fc.mat, "waveH8marray_notide11.csv")
+
+
+#time<-waveh[2347:2418,1]
+#plot(time,exp(fc$pred),type="l",col="blue", ylim = c(0.3,1.3), ylab = "waveheight (m)")
+#legend("topleft", lty=c(1,1), col=c("black","red","blue"), legend = c("truth","model2","model4"))
+#lines(time,waveD1.fc, col = "black")
+#lines(time,exp(fc$pred), col = "blue")
+#lines(time,exp(fc$pred), col = "red")
+
+
+#model3
+fcmode3=arima(height.tide.total[,2], order = c(1,1,2), xreg=height.tide.total[,3])
+fc3<-predict(fcmode3, n.ahead = 72, interval="confidence", newxreg=height.tide.fc[,3]) 
+
+
+#model4
+#reg.total<-ts.intersect(height.tide.total[,2],height.tide.total[,3])
+#reg.total<-ts.intersect(height.tide.fc[,2],height.tide.fc[,3], lag(waveD1.comb[,2],-1),lag(waveD1.comb[,2],1))
+fcmode4=arima(height.tide.total[,2], order = c(1,1,2), seasonal = list(order = c(0,0,1), period = 12), xreg=height.tide.total[,3])
+#newreg.fc<-ts.intersect(waveD1.fc[,1], waveD1.fc[,2],lag(waveD1.fc[,2],-1),lag(waveD1.fc[,2],1))
+#newreg.fc<-ts.intersect(height.tide.fc[,2],height.tide.fc[,3])
+fc4<-predict(fcmode4, n.ahead = 72, interval="confidence", newxreg=height.tide.fc[,3]) 
+#fc.mat1 = matrix(0, length(waveD1.fc[,1]), 2)
+#fc.mat1[,1] = exp(fc1$pred)
+#fc.mat1[,2] = exp(fc1$se)
+#colnames(fc.mat1) = c("pred", "se")
+#fc.mat1
+#write.csv(fc.mat1, "waveH8marray_tide.csv")
+#ylim =c(0.25,0.35) c(0.2,1.3)
+time<-waveh[2347:2418,1]
+plot(time,fc1$pred,type="l",col="blue", ylim =  c(0.2,1.3), ylab = "waveheight (m)")
+legend("topleft", lty=c(1,1), col=c("black","blue","red","green","yellow"), legend = c("truth","model1","model2 (we choose)","model3","model4"))
+lines(time,waveD1.fc, col = "black")
+lines(time,exp(fc1$pred), col = "blue")
+lines(time,exp(fc2$pred),col = "red")
+lines(time,fc3$pred, col = "green")
+lines(time,fc4$pred, col = "yellow")
+
+MSE.fc.mod1 = mean((exp(fc1$pred) - waveD1.fc)^2)
+MSE.fc.mod2 = mean((exp(fc2$pred) - waveD1.fc)^2)
+MSE.fc.mod3 = mean((fc3$pred - waveD1.fc)^2)
+MSE.fc.mod4 = mean((fc4$pred - waveD1.fc)^2)
+
+
+
+reg.total<-ts.intersect(height.tide.total[,2],height.tide.total[,3], lag(waveD1.comb[,2],-1),lag(waveD1.comb[,2],1))
+fcmode1=arima(log(reg.total[,1]), order = c(2,1,1), xreg=reg.total[,2])
+newreg.fc<-ts.intersect(waveD1.fc[,1], waveD1.fc[,2],lag(waveD1.fc[,2],-1),lag(waveD1.fc[,2],1))
+fc1<-predict(fcmode1, n.ahead = length(waveD1.fc[,1]), interval="confidence", newxreg=newreg.fc[,2]) 
+fc.mat1 = matrix(0, length(waveD1.fc[,1]), 2)
+fc.mat1[,1] = exp(fc1$pred)
+fc.mat1[,2] = exp(fc1$se)
+colnames(fc.mat1) = c("pred", "se")
+fc.mat1
+write.csv(fc.mat1, "waveH8marray_tide.csv")
+
+
+
+fcmod = arima(log(waveD1.total[1:2346,1]), order = c(2,1,1))
+fc <- predict(fcmod, n.ahead = length(waveD1.fc[,1]), interval="confidence")
+fc.mat = matrix(0, length(waveD1.fc[,1]), 2)
+fc.mat[,1] = exp(fc$pred)
+fc.mat[,2] = exp(fc$se)
+colnames(fc.mat) = c("pred", "se")
+fc.mat
+write.csv(fc.mat, "waveH8marray_notide.csv")
+
+write.csv(waveh[1:2306,], "waveheight.train.csv")
+
+
+

@@ -1,0 +1,54 @@
+library(TSA)
+library(stats)
+library(tseies)
+setwd("C:\\Users\\Li\\Desktop\\workshop and conference\\math modeling\\data")
+wavenum<-read.csv("wavenum_y1.csv")
+a<-ts(wavenum)
+ts.plot(a[,c(4,20,39,58,75)], col=1:4, ylab=" ", xlab="time", main="wave")
+
+
+plot(wavenum[,1],wavenum[,4],xlab="time", ylab="wave number",type="p", col='black')
+lines(wavenum[,1],wavenum[,4], col='black')
+lines(wavenum[,1],wavenum[,20], col='green')
+lines(wavenum[,1],wavenum[,39], col='blue')
+lines(wavenum[,1],wavenum[,58], col='brown')
+lines(wavenum[,1],wavenum[,75], col='red')
+
+wavefreq<-read.csv("wavefreq_y1.csv")
+b<-ts(wavefreq)
+plot(wavefreq[,1],wavefreq[,4],xlab="time", ylab="wave freq",type="p", col='black')
+lines(wavefreq[,1],wavefreq[,4], col='black')
+lines(wavefreq[,1],wavefreq[,20], col='green')
+lines(wavefreq[,1],wavefreq[,39], col='blue')
+lines(wavefreq[,1],wavefreq[,58], col='brown')
+lines(wavefreq[,1],wavefreq[,75], col='red')
+
+for(i in 1:ncol(data)){
+  data[is.na(data[,i]), i] <- mean(data[,i], na.rm = TRUE)
+}
+
+knnImputation(x,k=2)
+x = matrix(rnorm(100),10,10)
+> x.missing = x > 2
+> x[x.missing] = NA
+> complete.cases(x)
+[1]  TRUE  TRUE  TRUE FALSE FALSE  TRUE  TRUE  TRUE  TRUE  TRUE
+> knnImputation(x,k=3)
+
+
+
+
+plot(a[,1],a[,5],xlab="time", ylab="wave number")
+
+
+
+
+
+abline(reg=lm(AirPassengers~time(AirPassengers)))
+
+
+plot(AirPassengers)
+abline(reg=lm(AirPassengers~time(AirPassengers)))
+
+cycle(AirPassengers)
+plot(aggregate(AirPassengers,FUN=mean))

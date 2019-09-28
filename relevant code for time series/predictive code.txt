@@ -1,0 +1,205 @@
+library(lessR)
+library(tseries)
+library(urca)
+library(TSA)
+library(forecast)
+library(Hmisc)
+
+# read in data & preliminary analysis
+setwd("C:\\Users\\Li\\Desktop\\workshop and conference\\math modeling\\data")
+waveh<-read.csv("WaveH_T_Dir_10_11.csv")
+waveh<-waveh[1:720,]
+a<-ts(waveh)
+
+mydata1 <- read.csv("wavenum_y1.csv", header = FALSE)
+
+wavenum = t(mydata1)
+wavenum[,1] = 30*seq(1:24)
+colnames(wavenum) = c("Time", to("loc", 73))
+
+wave.ts <- ts(wavenum)
+
+plot(wave.ts[,5])
+lines(wave.ts[,7], col = 2)
+
+wavenum.sum = matrix(0, 73, 3)
+wavenum.sum[,1] = seq(1,73)
+wavenum.sum[,2] = apply(wave.ts[,2:74], 2, mean, na.rm = TRUE)
+wavenum.sum[,3] = apply(wave.ts[,2:74], 2, sd, na.rm = TRUE)
+x = wavenum.sum[,1]
+y = wavenum.sum[,2]
+sd = wavenum.sum[,3]
+plot(x, y, ylim = c(0,0.4), xlab = "Location Number", ylab = "wavenumber")
+arrows(x,y-sd,x,y+sd, code=3, length=0.02, angle = 90)
+
+
+mydata2 <- read.csv("wavefreq_y1.csv", header = FALSE)
+
+wavefreq = t(mydata2)
+wavefreq[,1] = 30*seq(1:24)
+colnames(wavenum) = c("Time", to("loc", 73))
+
+wavefq.ts <- ts(wavefreq)
+
+wavefq.sum = matrix(0, 73, 3)
+wavefq.sum[,1] = seq(1,73)
+wavefq.sum[,2] = apply(wavefq.ts[,2:74], 2, mean, na.rm = TRUE)
+wavefq.sum[,3] = apply(wavefq.ts[,2:74], 2, sd, na.rm = TRUE)
+x = wavefq.sum[,1]
+y = wavefq.sum[,2]
+sd = wavefq.sum[,3]
+plot(x, y, ylim = c(0,0.4), xlab = "Location Number", ylab = "frequency")
+arrows(x,y-sd,x,y+sd, code=3, length=0.02, angle = 90)
+
+
+
+######################### SARIMA #############################
+
+mydata3 <- read.csv("waveh.csv", header = FALSE)
+mydata3
+
+waveH <- waveh[,c(2)]
+plot(waveH)
+
+acf(waveH)
+# acf decays slowly; non stationary data
+# differencing to stabalize the mean
+# we want the data to look like white noise
+
+plot(waveH[1:6], type = "l")
+plot(waveH[1:24], type = "l")
+plot(waveH[1:48], type = "l")
+plot(waveH[1:72], type = "l")
+plot(waveH[1:720], type ="l")
+
+par(mfrow=c(3,1)) # plot ACFs
+acf(log(waveH[1:720]))
+pacf(log(waveH[1:720]))
+plot(log(waveH[1:720]), type = "l")
+
+par(mfrow=c(3,1)) # plot ACFs
+acf(diff(log(waveH[1:720]),6))
+pacf(diff(log(waveH[1:720]),6))
+plot(diff(log(waveH[1:720]),6), type = "l")
+
+acf(diff(diff(log(waveH[1:720]),6)))
+pacf(diff(diff(log(waveH[1:720]),6)))
+plot(diff(diff(log(waveH[1:720]),6)), type = "l")
+# big spike (likely caused by hurricane); otherwise look like whitenoise
+
+acf(diff(log(waveH[1:720]),24))
+pacf(diff(log(waveH[1:720]),24))
+plot(diff(log(waveH[1:720]),24), type = "l")
+
+acf(diff(diff(log(waveH[1:720]),24)))
+pacf(diff(diff(log(waveH[1:720]),24)))
+plot(diff(diff(log(waveH[1:720]),24)), type = "l")
+
+
+###########################  Prediction  ###############################
+arima(5,1,4)
+arima(3,1,2)
+arima(2,1,0)
+arima(1,1,0)
+
+waveHmonth = ts(waveH[1:4368], start=1, end=4368)
+waveH.train = ts(waveH[1:4320], start=1, end=4320)
+waveH.valid = ts(waveH[4321:4368], start=4321,end=4368)
+
+
+mod1 <- arima(waveH.train, order=c(5,1,4))
+
+plot(waveHmonth, ylim = c(-1.6, 4))
+lines((waveHmonth - mod1$residuals), col="green")
+
+wavepred <- predict(mod1, n.ahead = 12, interval="confidence")
+
+wave.conf.mean <- (wavepred$pred)
+wave.conf.lower <- (wavepred$pred-2*wavepred$se)
+wave.conf.upper <- (wavepred$pred+2*wavepred$se)
+
+plot(waveH.valid, ylim = c(1.5, 4), ylab = "wave height")
+legend("bottomleft", lty=c(1,2,1,2), col=c("blue", "red"), legend = c("pred","valid"))
+
+plot(waveHmonth, ylim = c(-1.6, 4))
+lines(waveHmonth - mod2$residuals, col="green")
+
+polygon(c(time(wavepred$pred),rev(time(wavepred$pred))),c(wave.conf.lower,rev(wave.conf.upper)),col="gainsboro",border=NA)
+lines(wave.conf.mean, col = "blue")
+lines(wave.conf.lower, lty = "dotted")
+lines(wave.conf.upper, lty = "dotted")
+lines(waveH.valid, col = "red")
+
+MSE.par = mean((wavepred$pred - waveH.valid)^2)
+
+
+
+mod2 <- arima(waveH.train, order=c(3,1,2), method = "ML")
+
+plot(waveHmonth, ylim = c(-1.6, 4))
+lines(waveHmonth - mod2$residuals, col="green")
+
+wavepred <- predict(mod2, n.ahead = 12, interval="confidence")
+
+wave.conf.mean <- (wavepred$pred)
+wave.conf.lower <- (wavepred$pred-2*wavepred$se)
+wave.conf.upper <- (wavepred$pred+2*wavepred$se)
+
+polygon(c(time(wavepred$pred),rev(time(wavepred$pred))),c(wave.conf.lower,rev(wave.conf.upper)),col="gainsboro",border=NA)
+lines(wave.conf.mean, col = "blue")
+lines(wave.conf.lower, lty = "dotted")
+lines(wave.conf.upper, lty = "dotted")
+lines(waveH.valid, col = "red")
+
+MSE.par = mean((wavepred$pred - waveH.valid)^2)
+
+
+
+
+
+mod3 <- arima(waveH.train, order=c(2,1,0))
+
+plot(waveHmonth, ylim = c(-1.6, 4))
+lines(waveHmonth - mod3$residuals, col="green")
+
+wavepred <- predict(mod3, n.ahead = 12, interval="confidence")
+
+wave.conf.mean <- (wavepred$pred)
+wave.conf.lower <- (wavepred$pred-2*wavepred$se)
+wave.conf.upper <- (wavepred$pred+2*wavepred$se)
+
+polygon(c(time(wavepred$pred),rev(time(wavepred$pred))),c(wave.conf.lower,rev(wave.conf.upper)),col="gainsboro",border=NA)
+lines(wave.conf.mean, col = "blue")
+lines(wave.conf.lower, lty = "dotted")
+lines(wave.conf.upper, lty = "dotted")
+lines(waveH.valid, col = "red")
+
+MSE.par = mean((wavepred$pred - waveH.valid)^2)
+
+
+
+
+mod4 <- arima(waveH.train, order=c(1,1,0), seas=list(order=c(1,1,1),24))
+
+plot(waveHmonth, ylim = c(-1.6, 4))
+lines(waveHmonth - mod4$residuals, col="green")
+
+wavepred <- predict(mod4, n.ahead = 48, interval="confidence")
+
+wave.conf.mean <- (wavepred$pred)
+wave.conf.lower <- (wavepred$pred-2*wavepred$se)
+wave.conf.upper <- (wavepred$pred+2*wavepred$se)
+
+polygon(c(time(wavepred$pred),rev(time(wavepred$pred))),c(wave.conf.lower,rev(wave.conf.upper)),col="gainsboro",border=NA)
+lines(wave.conf.mean, col = "blue")
+lines(wave.conf.lower, lty = "dotted")
+lines(wave.conf.upper, lty = "dotted")
+lines(waveH.valid, col = "red")
+
+MSE.par = mean((wavepred$pred - waveH.valid)^2)
+
+
+
+
+
+

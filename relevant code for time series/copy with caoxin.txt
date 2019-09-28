@@ -1,0 +1,50 @@
+library(TSA)
+library(stats)
+library(tseries)
+library(astsa)
+library(stats)
+library(zoo)
+library(xts)
+library(forecast)
+library(Hmisc)
+library(DMwR)
+library(lessR)
+library(urca)
+setwd("C:\\Users\\Li\\Desktop\\workshop and conference\\math modeling\\data")
+waveh<-read.csv("WaveH_T_Dir_10_11.csv")[1:4392,]
+new.waveh<-knnImputation(waveh,k=5)
+a<-ts(waveh)
+b<-ts(new.waveh)
+ts.plot(a[,2], col=1:4, ylab=" ", xlab="time", main="wave height")
+ts.plot(a[,3], col=1:4, ylab=" ", xlab="time", main="wave period")
+ts.plot(a[,4], col=1:4, ylab=" ", xlab="time", main="wave direction")
+
+plot(waveH[1:6], type = "l")
+plot(waveH[1:24], type = "l")
+plot(waveH[1:48], type = "l")
+plot(waveH[1:72], type = "l")
+plot(waveH[1:720], type ="l")
+
+par(mfrow=c(3,1)) # plot ACFs
+acf(log(waveH[1:720]))
+pacf(log(waveH[1:720]))
+plot(log(waveH[1:720]), type = "l")
+
+par(mfrow=c(3,1)) # plot ACFs
+acf(diff(log(waveH[1:720]),6))
+pacf(diff(log(waveH[1:720]),6))
+plot(diff(log(waveH[1:720]),6), type = "l")
+
+acf(diff(diff(log(waveH[1:720]),6)))
+pacf(diff(diff(log(waveH[1:720]),6)))
+plot(diff(diff(log(waveH[1:720]),6)), type = "l")
+# big spike (likely caused by hurricane); otherwise look like whitenoise
+
+acf(diff(log(waveH[1:720]),24))
+pacf(diff(log(waveH[1:720]),24))
+plot(diff(log(waveH[1:720]),24), type = "l")
+
+acf(diff(diff(log(waveH[1:720]),24)))
+pacf(diff(diff(log(waveH[1:720]),24)))
+plot(diff(diff(log(waveH[1:720]),24)), type = "l")
+
