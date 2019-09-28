@@ -1,0 +1,363 @@
+---
+title: "Distribution"
+author: "Panther"
+date: "February 10, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##Load Data
+
+```{r Load Data, message=FALSE}
+library(quanteda); library(tidyverse); library(TTR);library(ggplot2);library(scales); library(fOptions); library(pastecs); library(psych);library(crayon);library(PerformanceAnalytics);library(stats);library(RQuantLib);
+
+# here data read is being processed
+#t <- read_csv("../data/data_div.csv")
+#t <- read_csv("../Data/data.csv")
+t <- read_csv("F:/Dropbox/[IAQF]/Data/data_final.csv")
+t <- t[-1,]  #dump first day NA
+
+# t$Date <- strptime(as.character(t$Date), "%m/%d/%Y")
+# format(t$Date, "%Y-%m-%d")
+# t$Date <- as.Date(t$Date)
+
+```
+
+
+#Plot SPC and moving average
+
+```{r Plot index and moving average}
+
+t$POSIXct_Date <- as.POSIXct(t$Date)
+
+ggplot(t,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=Close,color="Close")) +
+  geom_line(aes(y=SMA60,color="SMA60")) +
+  geom_line(aes(y=SMA120,color="SMA120"))+ 
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")+
+  scale_colour_manual("", breaks = c("Close", "SMA60","SMA120"),
+                          values = c("blue", "red","green")) +
+  ggtitle("Closing index and moving averge for all data")
+
+a = 4500
+c = 7069
+
+ggplot(t[a:c,],aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=Close,color="Close")) +
+  geom_line(aes(y=SMA60,color="SMA60")) +
+  geom_line(aes(y=SMA120,color="SMA120"))+ 
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")+
+  scale_colour_manual("", breaks = c("Close", "SMA60","SMA120"),
+                          values = c("blue", "red","green")) +
+  ggtitle("Closing index and moving averge for 10 years")
+
+```
+
+
+#Momentum effect of portfolio returns
+Obvious autocorrelation, large ARMA parameters
+
+```{r Momentum effect}
+
+acf(t$port1_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port1_Relreturn,lag.max = 50)
+
+acf(t$port2_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port2_Relreturn,lag.max = 50)
+
+acf(t$port3_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port3_Relreturn,lag.max = 50)
+
+acf(t$port4_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port4_Relreturn,lag.max = 50)
+
+```
+
+
+
+# Scatter of RelReturn
+
+```{r Scatter Plot RelReturn}
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port1_Relreturn),size =1, shape= 1)
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port2_Relreturn),size =1, shape= 1)
+
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port3_Relreturn),size =1, shape= 1)
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port4_Relreturn),size =1, shape= 1) 
+#  ylim(-250000,350000)
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port1_Relreturn,color="Port1"),alpha=0.2) +
+  geom_point(aes(y=port2_Relreturn,color="Port2"),alpha=0.2) +
+  geom_point(aes(y=port3_Relreturn,color="Port3"),alpha=0.2) +
+  geom_point(aes(y=port4_Relreturn,color="Port4"),alpha=0.2) +
+  ylim(-100000,200000) +
+  theme_bw() +
+  ggtitle("Relreturn comparing for four portfolios")
+
+```
+
+
+#Histogram of RelReturn
+Portfolio 2 is strongly non-central and skewed
+Portfolio 4 is pretty discrete
+
+```{r Histogram Plot RelReturn}
+
+ggplot(t,aes(x = port1_Relreturn)) + 
+  geom_histogram(aes(y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port1_Relreturn),sd = sd(t$port1_Relreturn))) +
+  theme_bw()
+
+ggplot(t,aes(x = port2_Relreturn)) + 
+  geom_histogram(aes(y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port2_Relreturn),sd = sd(t$port2_Relreturn))) +
+  theme_bw()
+
+ggplot(t,aes(x = port3_Relreturn)) + 
+  geom_histogram(aes(y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port3_Relreturn),sd = sd(t$port3_Relreturn))) +
+  theme_bw()
+
+ggplot(t,aes(x = port4_Relreturn)) + 
+  geom_histogram(aes(binwidth = 1,y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port4_Relreturn),sd = sd(t$port4_Relreturn))) +
+#  xlim(-10000,10000) +
+  theme_bw()
+
+
+
+```
+
+
+
+#QQ plot of Relreturn
+
+```{r QQ Plot Relreturn}
+
+ggplot(t, aes(sample=port1_Relreturn)) +  stat_qq() 
+ggplot(t, aes(sample=port2_Relreturn)) +  stat_qq() 
+ggplot(t, aes(sample=port3_Relreturn)) +  stat_qq() 
+ggplot(t, aes(sample=port4_Relreturn)) +  stat_qq() 
+
+
+```
+
+
+#Statistics of Relreturn
+
+```{r Statistics of Relreturn}
+
+cat(red("Relreturn Statistics in all time\n"))
+cat(blue("Portfolio 1\n"))
+stat.desc(t$port1_Relreturn)
+describe(t$port1_Relreturn)
+
+cat(blue("Portfolio 2\n"))
+stat.desc(t$port2_Relreturn)
+describe(t$port2_Relreturn)
+
+cat(blue("Portfolio 3\n"))
+stat.desc(t$port3_Relreturn)
+describe(t$port3_Relreturn)
+
+cat(blue("Portfolio 4\n"))
+stat.desc(t$port4_Relreturn)
+describe(t$port4_Relreturn)
+
+
+```
+
+
+
+#Statistics Comparison
+
+```{r Statistics table}
+
+base <- t[,c(11,13,15,17)]
+colnames(base) <- c("port1_Relreturn","port2_Relreturn","port3_Relreturn","port4_Relreturn")
+
+#base <- t[,c(9,11,13,15)]
+#colnames(base) <- c("port1_absreturn","port2_absreturn","port3_absreturn","port4_absreturn")
+
+stat <- sapply(base,sum) %>%
+  rbind(sapply(base,mean)) %>%
+  rbind(sapply(base,mean)*252) %>%
+  rbind(sapply(base,var)) %>%
+  rbind(sapply(base,skew)) %>%
+  rbind(sapply(base,kurtosis))
+
+rownames(stat) <- c("sum","mean","annual mean","var","skew","kurtosis")
+
+print("Statistics in all time")
+print(stat)
+
+
+```
+
+#Cumulative RelReturn
+See how the cost of options and straddles ruined your return
+
+
+```{r Cumulative Relreturn}
+
+t$port1_cum_Relreturn <- cumsum(t$port1_Relreturn)
+t$port2_cum_Relreturn <- cumsum(t$port2_Relreturn)
+t$port3_cum_Relreturn <- cumsum(t$port3_Relreturn)
+t$port4_cum_Relreturn <- cumsum(t$port4_Relreturn)
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_cum_Relreturn,color="Port1")) +
+  geom_line(aes(y=port2_cum_Relreturn,color="Port2")) +
+  geom_line(aes(y=port3_cum_Relreturn,color="Port3")) +
+  geom_line(aes(y=port4_cum_Relreturn,color="Port4")) +
+#  ylim(-10000000,50000000) +
+  theme_bw() +
+  ggtitle("Cumulative Return comparing in all time")
+
+
+```
+
+
+#Realized Volatility on Relreturn
+Realized Vol is limited, 10 years has upper boundary
+
+
+```{r Realized Volatility}
+
+t$port1_real_vol <- 252*cumsum(t$port1_Relreturn^2)/seq(length(t$port1_Relreturn)) %>% sqrt()
+t$port2_real_vol <- 252*cumsum(t$port2_Relreturn^2)/seq(length(t$port2_Relreturn)) %>% sqrt()
+t$port3_real_vol <- 252*cumsum(t$port3_Relreturn^2)/seq(length(t$port3_Relreturn)) %>% sqrt()
+t$port4_real_vol <- 252*cumsum(t$port4_Relreturn^2)/seq(length(t$port4_Relreturn)) %>% sqrt()
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_real_vol,color="Port1")) +
+  geom_line(aes(y=port2_real_vol,color="Port2")) +
+  geom_line(aes(y=port3_real_vol,color="Port3")) +
+  geom_line(aes(y=port4_real_vol,color="Port4")) +
+#  ylim(-1000,10000) +
+  theme_bw() +
+  ggtitle("Realized Volatility in all time")
+
+```
+
+
+#Rolling Analysis annually(252 days)
+Rolling mean is smoother, bur going worse. 
+Rolling vlo is controlled. 
+Rolling correlation is towards positive, which is not we expecting.
+
+
+```{r Rolling Analysis annually}
+
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+port2 <- xts(x=t$port2_Relreturn, order.by=t$Date)
+port3 <- xts(x=t$port3_Relreturn, order.by=t$Date)
+port4 <- xts(x=t$port4_Relreturn, order.by=t$Date)
+
+t$port1_roll_mean <- apply.rolling(port1,252,gap=252,by=1,FUN="mean")
+t$port2_roll_mean <- apply.rolling(port2,252,gap=252,by=1,FUN="mean")
+t$port3_roll_mean <- apply.rolling(port3,252,gap=252,by=1,FUN="mean")
+t$port4_roll_mean <- apply.rolling(port4,252,gap=252,by=1,FUN="mean")
+
+t$port1_roll_vol <- apply.rolling(port1,252,gap=252,by=1,FUN="sd")
+t$port2_roll_vol <- apply.rolling(port2,252,gap=252,by=1,FUN="sd")
+t$port3_roll_vol <- apply.rolling(port3,252,gap=252,by=1,FUN="sd")
+t$port4_roll_vol <- apply.rolling(port4,252,gap=252,by=1,FUN="sd")
+
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_mean,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_mean,na.rm = TRUE)) 
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_vol,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_vol,na.rm = TRUE))
+
+chart.RollingCorrelation(t$port1_roll_mean, t$port1_roll_vol,252)
+chart.RollingCorrelation(t$port2_roll_mean, t$port2_roll_vol,252)
+chart.RollingCorrelation(t$port3_roll_mean, t$port3_roll_vol,252)
+chart.RollingCorrelation(t$port4_roll_mean, t$port4_roll_vol,252)
+
+```
+
+#Rolling Analysis 60 days
+Rolling mean is smoother, bur going worse. 
+Rolling vlo is controlled. 
+Rolling correlation is towards positive, which is not we expecting.
+
+```{r Rolling Analysis 60 days}
+
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+t$port1_roll_mean <- apply.rolling(port1,60,gap=60,by=1,FUN="mean")
+t$port1_roll_vol <- apply.rolling(port1,60,gap=60,by=1,FUN="sd")
+port2 <- xts(x=t$port2_Relreturn, order.by=t$Date)
+t$port2_roll_mean <- apply.rolling(port2,60,gap=60,by=1,FUN="mean")
+t$port2_roll_vol <- apply.rolling(port2,60,gap=60,by=1,FUN="sd")
+port3 <- xts(x=t$port3_Relreturn, order.by=t$Date)
+t$port3_roll_mean <- apply.rolling(port3,60,gap=60,by=1,FUN="mean")
+t$port3_roll_vol <- apply.rolling(port3,60,gap=60,by=1,FUN="sd")
+port4 <- xts(x=t$port4_Relreturn, order.by=t$Date)
+t$port4_roll_mean <- apply.rolling(port4,60,gap=60,by=1,FUN="mean")
+t$port4_roll_vol <- apply.rolling(port4,60,gap=60,by=1,FUN="sd")
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_mean,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_mean,na.rm = TRUE)) 
+
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_vol,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_vol,na.rm = TRUE))
+
+
+chart.RollingCorrelation(t$port1_roll_mean, t$port1_roll_vol,60)
+chart.RollingCorrelation(t$port2_roll_mean, t$port2_roll_vol,60)
+chart.RollingCorrelation(t$port3_roll_mean, t$port3_roll_vol,60)
+chart.RollingCorrelation(t$port4_roll_mean, t$port4_roll_vol,60)
+
+
+```
+
+
+
+
+
+
+setwd("F:/Dropbox/[IAQF_Max]/R")
+write_csv(t,"../data/data.csv")
+
+

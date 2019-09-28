@@ -1,0 +1,743 @@
+---
+title: "Port1&2"
+author: "Panther"
+date: "February 16, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Load Data
+
+```{r Load Data, message=FALSE}
+library(quanteda); library(tidyverse); library(TTR);library(ggplot2);library(scales); library(fOptions); library(pastecs); library(psych);library(crayon);library(PerformanceAnalytics);library(stats);library(RQuantLib);library(ggrepel);
+
+# here data read is being processed
+t <- read_csv("F:/Dropbox/[IAQF]/Data/data_final.csv")
+t <- t[-1,]  #dump first day NA
+
+```
+
+##Signal
+#Singal turning point
+```{r }
+#turning point
+t$signal_turning[1] = NA
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+  if (t$signal[i+1] == t$signal[i])  #different from previous day
+    t$signal_turning[i+1] = 0
+  else
+    t$signal_turning[i+1] = 1   #change to and maintain
+}
+
+table(t$signal_turning)
+
+temp = which(t$signal_turning == 1)
+j = 1
+a <- data.frame(date=as.POSIXct(character()),close=as.numeric(),signal=as.numeric())
+for (i in temp){
+  a[j,1] <- t$Date[i]
+  a[j,2] <- t$Close[i]
+  a[j,3] <- t$signal[i]
+  j = j+1
+}
+
+ggplot(t,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=Close,color="Close")) +
+  geom_line(aes(y=SMA60,color="SMA60")) +
+  geom_line(aes(y=SMA120,color="SMA120"))+ 
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")+
+  scale_colour_manual("", breaks = c("Close", "SMA60","SMA120"),
+                          values = c("blue", "red","green")) +
+#  geom_point(data=a,aes(x=date,y=close),size =3, shape= 5) +
+#  geom_text(data=a, aes(x=date,y=close,label = signal),size = 5,check_overlap = TRUE, vjust = 0.5) +
+#  geom_text_repel(data=a, aes(x=date,y=close,label = signal)) +
+  geom_label_repel(data=a, aes(x=date,y=close,label = signal),alpha = 0.3)  +
+  geom_vline(data=a, aes(xintercept =date),linetype="dotted", size=0.2) +
+  theme_bw() +
+  ggtitle("Closing index and moving averge for all data")
+
+```
+
+#Profitability of each turning signal
+```{r }
+#t <- t[-1,] 
+
+mean_return = mean(t$port1_Relreturn)
+
+b <- data.frame(sum_return=as.numeric(),excess_return=as.numeric(),return_ratio=as.numeric(),date=as.Date(character()))
+count = 1
+for (i in temp){
+  if (count == 1){
+    b[count,1] <- sum(t$port1_Relreturn[1:i])
+    b[count,2] <- b[count,1] - mean_return * i
+    b[count,3] <- b[count,1] / (mean_return * i)
+    b[count,4] <- t$Date[1]
+    temp1 = i
+    count = count +1}
+  else {
+    b[count,1] <- sum(t$port1_Relreturn[temp1:i])
+    b[count,2] <- b[count,1] - mean_return * (i-temp1)
+    b[count,3] <- b[count,1] / (mean_return * (i-temp1))
+    b[count,4] <- t$Date[temp1]
+    temp1 = i
+    count = count +1}
+}
+b[count,1] <- sum(t$port1_Relreturn[temp1:length(t$port1_Relreturn)])
+b[count,2] <- b[count,1] - mean_return * (length(t$port1_Relreturn)-temp1)
+b[count,3] <- b[count,1] / (mean_return * (length(t$port1_Relreturn)-temp1))
+b[count,4] <- t$Date[temp1]
+
+which(b$sum_return >0)
+
+b$row <- as.numeric(row.names(b))
+
+ggplot(b,aes(row,sum_return)) +
+  geom_bar(stat = "identity",width=1) +
+  geom_label_repel(data=b, aes(x=row,label=as.character(date)),size = 3,alpha = 0.5) +
+  ggtitle("sum return")
+
+ggplot(b,aes(row,excess_return)) +
+  geom_bar(stat = "identity",width=1) +
+  geom_label_repel(data=b, aes(x=row,label=as.character(date)),size = 3,alpha = 0.5) +
+  ggtitle("excess return")
+
+ggplot(b,aes(row,return_ratio)) +
+  geom_bar(stat = "identity",width=1) +
+  geom_label_repel(data=b, aes(x=row,label=as.character(date)),size = 3,alpha = 0.5) +
+  ggtitle("return ratio")
+
+aa = 0
+bb = 0
+for (i in b$row) {
+  if (i==length(b$row)){
+    if (b$sum_return[i]>0)
+      aa = aa + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))
+    else
+      bb = bb + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))}
+  else {  
+    if (b$sum_return[i]>0)
+      aa = aa + as.numeric(difftime(b$date[i+1],b$date[i]))
+    else
+      bb = bb + as.numeric(difftime(b$date[i+1],b$date[i]))} 
+}
+aa
+bb
+
+aaa = 0
+bbb = 0
+for (i in b$row) {
+  if (i==length(b$row)){
+    if (b$excess_return[i]>0)
+      aaa = aaa + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))
+    else
+      bbb = bbb + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))}
+  else {  
+    if (b$excess_return[i]>0)
+      aaa = aaa + as.numeric(difftime(b$date[i+1],b$date[i]))
+    else
+      bbb = bbb + as.numeric(difftime(b$date[i+1],b$date[i]))} 
+}
+aaa
+bbb
+
+```
+
+#Quantify signals' profitability on 60 days rolling window
+```{r }
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+t$port1_roll_mean <- apply.rolling(port1,60,gap=60,by=1,FUN="mean")
+rolling_mean = mean(t$port1_roll_mean,na.rm=TRUE)
+
+c <- data.frame(return_60days=as.numeric(),excess_return=as.numeric(),return_ratio=as.numeric(),date=as.Date(character()))
+for (i in seq_along(t$Close[1:(length(t$Close)-60)])){
+  c[i,1] <- sum(t$port1_Relreturn[i:i+59])
+  c[i,2] <- c[i,1] - rolling_mean*60
+  c[i,3] <- c[i,1] / (rolling_mean*60)
+  c[i,4] <- t$Date[i]
+}
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=return_60days),size =1, shape= 1)
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=excess_return),size =1, shape= 1)
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=return_ratio),size =1, shape= 1)
+
+cc = 0
+dd = 0
+cc_sum = 0
+dd_sum = 0
+for (i in seq_along(c$return_60days)) {
+  if (c$return_60days[i]>0){
+    cc = cc + 1
+    cc_sum = cc_sum + c$return_60days[i]}
+  else {
+    dd = dd + 1
+    dd_sum = dd_sum + c$return_60days[i]}
+}
+cc
+dd
+cc_sum
+dd_sum
+cc/cc_sum
+dd/dd_sum
+
+```
+
+#Quantify signals' profitability on 252 days rolling window
+```{r }
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+t$port1_roll_mean <- apply.rolling(port1,252,gap=252,by=1,FUN="mean")
+rolling_mean = mean(t$port1_roll_mean,na.rm=TRUE)
+
+c <- data.frame(return_60days=as.numeric(),excess_return=as.numeric(),return_ratio=as.numeric(),date=as.Date(character()))
+for (i in seq_along(t$Close[1:(length(t$Close)-252)])){
+  c[i,1] <- sum(t$port1_Relreturn[i:i+251])
+  c[i,2] <- c[i,1] - rolling_mean*252
+  c[i,3] <- c[i,1] / (rolling_mean*252)
+  c[i,4] <- t$Date[i]
+}
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=return_60days),size =1, shape= 1)
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=excess_return),size =1, shape= 1)
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=return_ratio),size =1, shape= 1)
+
+cc = 0
+dd = 0
+cc_sum = 0
+dd_sum = 0
+for (i in seq_along(c$return_60days)) {
+  if (c$return_60days[i]>0){
+    cc = cc + 1
+    cc_sum = cc_sum + c$return_60days[i]}
+  else {
+    dd = dd + 1
+    dd_sum = dd_sum + c$return_60days[i]}
+}
+cc
+dd
+cc_sum
+dd_sum
+cc/cc_sum
+dd/dd_sum
+
+```
+#Profitability of each turning signal ( portfolio 2)
+```{r }
+#t <- t[-1,] 
+
+mean_return = mean(t$port2_Relreturn)
+
+b <- data.frame(sum_return=as.numeric(),excess_return=as.numeric(),return_ratio=as.numeric(),date=as.Date(character()))
+count = 1
+for (i in temp){
+  if (count == 1){
+    b[count,1] <- sum(t$port2_Relreturn[1:i])
+    b[count,2] <- b[count,1] - mean_return * i
+    b[count,3] <- b[count,1] / (mean_return * i)
+    b[count,4] <- t$Date[1]
+    temp1 = i
+    count = count +1}
+  else {
+    b[count,1] <- sum(t$port2_Relreturn[temp1:i])
+    b[count,2] <- b[count,1] - mean_return * (i-temp1)
+    b[count,3] <- b[count,1] / (mean_return * (i-temp1))
+    b[count,4] <- t$Date[temp1]
+    temp1 = i
+    count = count +1}
+}
+b[count,1] <- sum(t$port2_Relreturn[temp1:length(t$port2_Relreturn)])
+b[count,2] <- b[count,1] - mean_return * (length(t$port2_Relreturn)-temp1)
+b[count,3] <- b[count,1] / (mean_return * (length(t$port2_Relreturn)-temp1))
+b[count,4] <- t$Date[temp1]
+
+which(b$sum_return >0)
+
+b$row <- as.numeric(row.names(b))
+
+ggplot(b,aes(row,sum_return)) +
+  geom_bar(stat = "identity",width=1) +
+  geom_label_repel(data=b, aes(x=row,label=as.character(date)),size = 3,alpha = 0.5) +
+  ggtitle("sum return")
+
+ggplot(b,aes(row,excess_return)) +
+  geom_bar(stat = "identity",width=1) +
+  geom_label_repel(data=b, aes(x=row,label=as.character(date)),size = 3,alpha = 0.5) +
+  ggtitle("excess return")
+
+ggplot(b,aes(row,return_ratio)) +
+  geom_bar(stat = "identity",width=1) +
+  geom_label_repel(data=b, aes(x=row,label=as.character(date)),size = 3,alpha = 0.5) +
+  ggtitle("return ratio")
+
+aa = 0
+bb = 0
+for (i in b$row) {
+  if (i==length(b$row)){
+    if (b$sum_return[i]>0)
+      aa = aa + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))
+    else
+      bb = bb + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))}
+  else {  
+    if (b$sum_return[i]>0)
+      aa = aa + as.numeric(difftime(b$date[i+1],b$date[i]))
+    else
+      bb = bb + as.numeric(difftime(b$date[i+1],b$date[i]))} 
+}
+aa
+bb
+
+aaa = 0
+bbb = 0
+for (i in b$row) {
+  if (i==length(b$row)){
+    if (b$excess_return[i]>0)
+      aaa = aaa + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))
+    else
+      bbb = bbb + as.numeric(difftime(t$Date[length(t$Date)],b$date[i]))}
+  else {  
+    if (b$excess_return[i]>0)
+      aaa = aaa + as.numeric(difftime(b$date[i+1],b$date[i]))
+    else
+      bbb = bbb + as.numeric(difftime(b$date[i+1],b$date[i]))} 
+}
+aaa
+bbb
+
+```
+
+#Quantify signals' profitability on 60 days rolling window (Portfolio 2)
+```{r }
+port2 <- xts(x=t$port2_Relreturn, order.by=t$Date)
+t$port2_roll_mean <- apply.rolling(port2,60,gap=60,by=1,FUN="mean")
+rolling_mean = mean(t$port2_roll_mean,na.rm=TRUE)
+
+c <- data.frame(return_60days=as.numeric(),excess_return=as.numeric(),return_ratio=as.numeric(),date=as.Date(character()))
+for (i in seq_along(t$Close[1:(length(t$Close)-60)])){
+  c[i,1] <- sum(t$port2_Relreturn[i:i+59])
+  c[i,2] <- c[i,1] - rolling_mean*60
+  c[i,3] <- c[i,1] / (rolling_mean*60)
+  c[i,4] <- t$Date[i]
+}
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=return_60days),size =1, shape= 1)
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=excess_return),size =1, shape= 1)
+
+ggplot(c,aes(x=date)) + 
+  geom_point(aes(y=return_ratio),size =1, shape= 1)
+
+cc = 0
+dd = 0
+cc_sum = 0
+dd_sum = 0
+for (i in seq_along(c$return_60days)) {
+  if (c$return_60days[i]>0){
+    cc = cc + 1
+    cc_sum = cc_sum + c$return_60days[i]}
+  else {
+    dd = dd + 1
+    dd_sum = dd_sum + c$return_60days[i]}
+}
+cc
+dd
+cc_sum
+dd_sum
+cc/cc_sum
+dd/dd_sum
+
+```
+
+##Portfolio2 - Option
+
+#Price level
+```{r }
+ggplot(t,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=Close,color="Close")) +
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")
+
+
+S <- xts(x=t$Close, order.by=t$Date)
+q <- xts(x=t$Div_rate_monthly, order.by=t$Date)
+r <- xts(x=t$Free_rate, order.by=t$Date)
+vix <- xts(x=t$VIX, order.by=t$Date)
+T = 90
+
+S1 <- apply.rolling(S,252,gap=0,by=252,FUN="mean")
+q1 <- apply.rolling(q,252,gap=0,by=252,FUN="mean")
+r1 <- apply.rolling(r,252,gap=0,by=252,FUN="mean")
+vix1 <- apply.rolling(vix,252,gap=0,by=252,FUN="mean")
+
+S2 <- S1[which(!is.na(S1))]
+q2 <- q1[which(!is.na(q1))]
+r2 <- r1[which(!is.na(r1))]/100
+vix2 <- vix1[which(!is.na(vix1))]/100
+T2 <- T/365
+
+#C <- EuropeanOption("call", S2, S2, q2, r2, T2, vix2)
+#P <- EuropeanOption("put", S2, S2, q2, r2, T2, vix2)
+C <- list()
+P <- list()
+for (i in seq_along(S2)){
+  C[[i]] <- EuropeanOption("call", S2[i], S2[i], q2[i], r2[i], T2, vix2[i])
+  P[[i]] <- EuropeanOption("put", S2[i], S2[i], q2[i], r2[i], T2, vix2[i])
+}
+
+#date <- data.frame(date=index(S2))
+
+table1 <- data.frame(date=as.Date(character()),index=as.numeric(),callPrice=as.numeric(),callDelta=as.numeric(),putPrice=as.numeric(),putDelta=as.numeric())
+
+for (i in seq_along(S2)){
+  table1[i,1] <- as.Date(index(S2[i]))
+  table1[i,2] <- S2[[i]]
+  table1[i,3] <- C[[i]]$value
+  table1[i,4] <- C[[i]]$delta
+  table1[i,5] <- P[[i]]$value
+  table1[i,6] <- P[[i]]$delta  
+}
+
+table1[,7] <- table1[,2]/table1[,3]*table1[,4]
+table1[,8] <- table1[,2]/table1[,5]*table1[,6]
+
+colnames(table1)[7] <- "callPortDelta"
+colnames(table1)[8] <- "putPortDelta"
+
+print(table1)
+
+t$port2_cum_Relreturn <- cumsum(t$port2_Relreturn)
+ggplot(t,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=t$port2_cum_Relreturn,color="Cum_port2_rel")) +
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")
+
+ggplot(table1,aes(x=date)) + 
+#  geom_line(aes(y=index,color="index")) +
+  geom_line(aes(y=callPortDelta,color="call port delta")) +
+  geom_line(aes(y=putPortDelta,color="put port delta")) +
+  labs(color="Legend")
+
+
+
+#C[[i]]$  
+#   value    delta    gamma     vega    theta      rho   divRho
+
+```
+
+#VIX
+```{r }
+
+ggplot(t,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=VIX,color="VIX")) +
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")
+
+ggplot(table1,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=VIX,color="VIX")) +
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")
+
+table2 <- data.frame(date=as.Date(character()),VIX=as.numeric(),callPrice=as.numeric(),callVega=as.numeric(),putPrice=as.numeric(),putVega=as.numeric())
+
+for (i in seq_along(S2)){
+  table2[i,1] <- as.Date(index(S2[i]))
+  table2[i,2] <- vix2[[i]]
+  table2[i,3] <- C[[i]]$value
+  table2[i,4] <- C[[i]]$vega
+  table2[i,5] <- P[[i]]$value
+  table2[i,6] <- P[[i]]$vega  
+}
+
+ggplot(table2,aes(x=date)) + 
+  geom_line(aes(y=callVega,color="Vega")) 
+
+```
+
+#r & Div
+```{r }
+
+ggplot(t,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=Free_rate/100,color="r")) +
+  geom_line(aes(y=Div_rate_monthly,color="q")) +
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")
+
+
+table3 <- data.frame(date=as.Date(character()),r=as.numeric(),callRho=as.numeric(),putRho=as.numeric(),q=as.numeric(),callDivRho=as.numeric(),putDivRho=as.numeric())
+
+for (i in seq_along(S2)){
+  table3[i,1] <- as.Date(index(S2[i]))
+  table3[i,2] <- r2[[i]]
+  table3[i,3] <- C[[i]]$rho
+  table3[i,4] <- P[[i]]$rho
+  table3[i,5] <- q2[[i]]
+  table3[i,6] <- P[[i]]$divRho
+  table3[i,7] <- P[[i]]$divRho  
+}
+
+ggplot(table3,aes(x=date)) + 
+  geom_line(aes(y=callRho,color="Rho")) +
+  geom_line(aes(y=callDivRho,color="DivRho"))
+
+```
+
+#T
+```{r }
+
+table4 <- data.frame(date=as.Date(character()),callTheta=as.numeric(),putTheta=as.numeric())
+
+for (i in seq_along(S2)){
+  table4[i,1] <- as.Date(index(S2[i]))
+  table4[i,2] <- C[[i]]$theta
+  table4[i,3] <- C[[i]]$theta
+}
+
+ggplot(table4,aes(x=date)) + 
+  geom_line(aes(y=callTheta,color="callTheta")) +
+  geom_line(aes(y=putTheta,color="putTheta"))
+
+T = 180
+T2 <- T/365
+
+#C <- EuropeanOption("call", S2, S2, q2, r2, T2, vix2)
+#P <- EuropeanOption("put", S2, S2, q2, r2, T2, vix2)
+C <- list()
+P <- list()
+for (i in seq_along(S2)){
+  C[[i]] <- EuropeanOption("call", S2[i], S2[i], q2[i], r2[i], T2, vix2[i])
+  P[[i]] <- EuropeanOption("put", S2[i], S2[i], q2[i], r2[i], T2, vix2[i])
+}
+
+for (i in seq_along(S2)){
+  table4[i,1] <- as.Date(index(S2[i]))
+  table4[i,2] <- C[[i]]$theta
+  table4[i,3] <- C[[i]]$theta
+}
+
+ggplot(table4,aes(x=date)) + 
+  geom_line(aes(y=callTheta,color="callTheta")) +
+  geom_line(aes(y=putTheta,color="putTheta"))
+
+
+T = 45
+T2 <- T/365
+
+#C <- EuropeanOption("call", S2, S2, q2, r2, T2, vix2)
+#P <- EuropeanOption("put", S2, S2, q2, r2, T2, vix2)
+C <- list()
+P <- list()
+for (i in seq_along(S2)){
+  C[[i]] <- EuropeanOption("call", S2[i], S2[i], q2[i], r2[i], T2, vix2[i])
+  P[[i]] <- EuropeanOption("put", S2[i], S2[i], q2[i], r2[i], T2, vix2[i])
+}
+
+for (i in seq_along(S2)){
+  table4[i,1] <- as.Date(index(S2[i]))
+  table4[i,2] <- C[[i]]$theta
+  table4[i,3] <- C[[i]]$theta
+}
+
+ggplot(table4,aes(x=date)) + 
+  geom_line(aes(y=callTheta,color="callTheta")) +
+  geom_line(aes(y=putTheta,color="putTheta"))
+
+
+
+
+
+```
+
+#factor model on all components
+```{r }
+
+t$VIX <- t$VIX/100
+t$Free_rate <- t$Free_rate/100
+t$signal <- factor(t$signal)
+tt <- cbind(t$port2_Relreturn,t$Close,t$signal,t$VIX,t$Free_rate,t$Div_rate_monthly)
+colnames(tt) <- c("return","close","signal","VIX","Free_rate","Div")
+tt <- data.frame(tt)
+
+Mod1 <- lm(return ~ close+signal+VIX+Free_rate+Div, data=tt)
+summary(Mod1)
+
+lmMod <- lm(return ~ . , data = tt)
+selectedMod <- step(lmMod)
+summary(selectedMod)
+
+
+selectedMod <- lm(return ~ close+signal+VIX+Free_rate+Div, data=tt)
+all_vifs <- car::vif(selectedMod)
+print(all_vifs)
+
+signif_all <- names(all_vifs)
+
+# Remove vars with VIF> 4 and re-build model until none of VIFs don't exceed 4.
+while(any(all_vifs > 4)){
+  var_with_max_vif <- names(which(all_vifs == max(all_vifs)))  # get the var with max vif
+  signif_all <- signif_all[!(signif_all) %in% var_with_max_vif]  # remove
+  myForm <- as.formula(paste("return ~ ", paste (signif_all, collapse=" + "), sep=""))  # new formula
+  selectedMod <- lm(myForm, data=inputData)  # re-build model with new formula
+  all_vifs <- car::vif(selectedMod)
+}
+summary(selectedMod)
+
+
+all_vars <- names(selectedMod[[1]])[-1]  # names of all X variables
+# Get the non-significant vars
+summ <- summary(selectedMod)  # model summary
+pvals <- summ[[4]][, 4]  # get all p values
+not_significant <- character()  # init variables that aren't statsitically significant
+not_significant <- names(which(pvals > 0.1))
+not_significant <- not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+# If there are any non-significant variables, 
+while(length(not_significant) > 0){
+  all_vars <- all_vars[!all_vars %in% not_significant[1]]
+  myForm <- as.formula(paste("return ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+  selectedMod <- lm(myForm, data=tt)  # re-build model with new formula
+  
+  # Get the non-significant vars.
+  summ <- summary(selectedMod)
+  pvals <- summ[[4]][, 4]
+  not_significant <- character()
+  not_significant <- names(which(pvals > 0.1))
+  not_significant <- not_significant[!not_significant %in% "(Intercept)"]
+}
+summary(selectedMod)
+
+library(leaps)
+
+regsubsetsObj <- regsubsets(x=tt[,2:6] ,y=tt$return, nbest = 2, really.big = T)
+plot(regsubsetsObj, scale = "adjr2")  # regsubsets plot based on R-sq
+
+Mod2 <- lm(return ~ close, data=tt)
+summary(Mod2)
+
+
+```
+
+#factor model on all components(monthly)
+```{r }
+
+ttt=xts(tt[,2:7], order.by=tt$`t$Date`)
+tttt=daily2monthly(ttt, FUN=mean, na.rm=TRUE)
+#date <- index(tttt)
+tttt <- data.frame(tttt)
+
+
+
+Mod1 <- lm(return ~ close+signal+VIX+Free_rate+Div, data=tttt)
+summary(Mod1)
+
+lmMod <- lm(return ~ . , data = tttt)
+selectedMod <- step(lmMod)
+summary(selectedMod)
+
+
+selectedMod <- lm(return ~ close+signal+VIX+Free_rate+Div, data=tt)
+all_vifs <- car::vif(selectedMod)
+print(all_vifs)
+
+signif_all <- names(all_vifs)
+
+# Remove vars with VIF> 4 and re-build model until none of VIFs don't exceed 4.
+while(any(all_vifs > 4)){
+  var_with_max_vif <- names(which(all_vifs == max(all_vifs)))  # get the var with max vif
+  signif_all <- signif_all[!(signif_all) %in% var_with_max_vif]  # remove
+  myForm <- as.formula(paste("return ~ ", paste (signif_all, collapse=" + "), sep=""))  # new formula
+  selectedMod <- lm(myForm, data=inputData)  # re-build model with new formula
+  all_vifs <- car::vif(selectedMod)
+}
+summary(selectedMod)
+
+
+all_vars <- names(selectedMod[[1]])[-1]  # names of all X variables
+# Get the non-significant vars
+summ <- summary(selectedMod)  # model summary
+pvals <- summ[[4]][, 4]  # get all p values
+not_significant <- character()  # init variables that aren't statsitically significant
+not_significant <- names(which(pvals > 0.1))
+not_significant <- not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+# If there are any non-significant variables, 
+while(length(not_significant) > 0){
+  all_vars <- all_vars[!all_vars %in% not_significant[1]]
+  myForm <- as.formula(paste("return ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+  selectedMod <- lm(myForm, data=tt)  # re-build model with new formula
+  
+  # Get the non-significant vars.
+  summ <- summary(selectedMod)
+  pvals <- summ[[4]][, 4]
+  not_significant <- character()
+  not_significant <- names(which(pvals > 0.1))
+  not_significant <- not_significant[!not_significant %in% "(Intercept)"]
+}
+summary(selectedMod)
+
+library(leaps)
+regsubsetsObj <- regsubsets(x=tttt[,2:6] ,y=tttt$return, nbest = 2, really.big = T)
+plot(regsubsetsObj, scale = "adjr2")  # regsubsets plot based on R-sq
+
+Mod2 <- lm(return ~ close, data=tt)
+summary(Mod2)
+
+Mod2 <- lm(return ~ signal, data=tttt)
+summary(Mod2)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,332 @@
+---
+title: "Improve"
+author: "Panther"
+date: "February 19, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Load Data
+
+```{r Load Data, message=FALSE}
+library(quanteda); library(tidyverse); library(TTR);library(ggplot2);library(scales); library(fOptions); library(pastecs); library(psych);library(crayon);library(PerformanceAnalytics);library(stats);library(RQuantLib);library(ggrepel);
+
+# here data read is being processed
+#t <- read_csv("F:/Dropbox/[IAQF]/Data/data_final.csv")
+#t <- t[-1,]  #dump first day NA
+#setwd("F:/Dropbox/[IAQF_Max]/R")
+
+```
+
+
+#Process Data
+
+```{r Process Data}
+
+GSPC <- read_csv("../data/^GSPC.csv")
+Treasury <- read_csv("../data/DTB3.csv")
+VIX <- read_csv("../data/^VIX.csv")
+DIV <- read_csv("../data/Dividends.csv")
+DIV_M <- read_csv("../data/SP500_DIV_YIELD_MONTH.csv")
+
+# DIV$`SPX Index` <- strptime(as.character(DIV$`SPX Index`), "%m/%d/%Y")
+# format(DIV$`SPX Index`, "%Y-%m-%d")
+# DIV$`SPX Index` <- as.Date(DIV$`SPX Index`)
+# t <- t[-10]
+
+t<-cbind(GSPC,Treasury$DTB3[match(GSPC$Date,Treasury$DATE)])
+t<-cbind(t,VIX$Close[match(t$Date,VIX$Date)])
+t<-cbind(t,DIV$X2[match(t$Date,DIV$`SPX Index`)])
+
+t<-t[,c(1,5,8,9,10)]
+t<- t[-1:(-10054+251),]  # extra 120 for training signal, will remove later
+colnames(t)[3] <- "Free_rate"
+colnames(t)[4] <- "VIX"
+colnames(t)[5] <- "Div_rate_daily"
+t$Free_rate = as.numeric(as.character(t$Free_rate))
+t$Div_rate_daily = as.numeric(as.character(t$Div_rate_daily))
+
+```
+
+#Missing Data
+
+```{r Missing Data}
+
+#missing data of free rate
+temp <- which(is.na(t$Free_rate))
+for (i in temp)
+  t$Free_rate[i] <- mean(t$Free_rate[(i-5):(i+5)], na.rm=TRUE)
+
+#t$Div_rate_daily[2] <- mean(t$Div_rate_daily[1:32], na.rm=TRUE)
+#t$Div_rate_daily[7] <- mean(t$Div_rate_daily[1:32], na.rm=TRUE)
+temp <- which(is.na(t$Div_rate_daily))
+for (i in temp){
+  if (i<15)
+    t$Div_rate_daily[i] <- mean(t$Div_rate_daily[1:30], na.rm=TRUE)
+  else
+    t$Div_rate_daily[i] <- mean(t$Div_rate_daily[(i-15):(i+15)], na.rm=TRUE)}
+
+
+```
+
+#Smooth dividend daily rate as monthly rate
+
+```{r smooth dividend}
+
+t$Div_rate_monthly <- t$Div_rate_daily
+# t$POSIXct_Date <- as.POSIXct(t$Date)
+# DIV_M$POSIXct_Date <- as.POSIXct(DIV_M$Date)
+DIV_M <- DIV_M[ nrow(DIV_M):1, ]
+DIV_M<- DIV_M[-1:-1416,]
+temp <- c("2018-01-31",1.87)
+DIV_M <- rbind(DIV_M, temp)
+DIV_M$Value = as.numeric(DIV_M$Value)
+# 
+# for (i in seq_along(t$Div_rate_daily)){
+#   if (i < 16)
+#     t$Div_rate_monthly[i] = mean(t$Div_rate_daily[i:(i+30)], na.rm=TRUE)
+#   else
+#     t$Div_rate_monthly[i] = mean(t$Div_rate_daily[(i-15):(i+15)], na.rm=TRUE)}
+# 
+# ggplot(t,aes(x=Date)) + 
+#   geom_line(aes(y=Div_rate_daily))
+# ggplot(t,aes(x=Date)) + 
+#   geom_line(aes(y=Div_rate_monthly)) 
+# 
+# stat.desc(t$Div_rate_daily)
+# describe(t$Div_rate_daily)
+# stat.desc(t$Div_rate_monthly)
+# describe(t$Div_rate_monthly)
+
+for (i in seq_along(t$Div_rate_daily)){
+  for (j in seq_along(DIV_M$Value)){
+    if (t$Date[i] <= DIV_M$Date[j+1] && t$Date[i] > DIV_M$Date[j]){
+      t$Div_rate_monthly[i] = DIV_M$Value[j+1]/100
+      break
+    }
+  }
+}
+
+```
+
+
+#save to tt
+```{r }
+tt <- t
+```
+
+#loop machine learning
+
+```{r }
+
+table_machine <- data.frame(i=as.numeric(),j=as.numeric(),port1_mean=as.numeric(),port1_var=as.numeric(),port1_sharp=as.numeric(),port2_mean=as.numeric(),port2_var=as.numeric(),port2_sharp=as.numeric())
+count = 1
+
+# loop
+for (i in seq(10, 250, 10)){
+  for (j in seq(10, 250, 10)){
+    if (i<j){
+      t <- tt
+      t$SMA60 <- SMA(t$Close,i)
+      t$SMA120 <- SMA(t$Close,j)
+      t<- t[-1:-251,]     # here remove training 120
+      for (k in seq_along(t$SMA120)){
+        if (t$SMA60[k]>t$SMA120[k])
+           t$signal[k] = 1            # signal = 1 is buy singal
+        else if (t$SMA60[k]<t$SMA120[k])
+           t$signal[k] = 0
+        else
+           t$signal[k] = t$singal[k-1]
+      }
+      # port1
+      t$port1_Relreturn[1] = NA
+      for (k in seq_along(t$Close[1:(length(t$Close)-1)])){
+        if (t$signal[k]== 1){
+           t$port1_Relreturn[k+1] = (t$Close[k+1]-t$Close[k]+t$Close[k]*t$Div_rate_monthly[k]/365*as.numeric(difftime(t$Date[k+1],t$Date[k]))) / t$Close[k] * 100000}
+        else{
+           t$port1_Relreturn[k+1] = (t$Close[k]-t$Close[k+1]) / t$Close[k] * 100000
+           }
+      }
+      # port 2
+      t$port2_Relreturn[1] = NA
+      for (k in seq_along(t$Close[1:(length(t$Close)-1)])){
+        if (t$signal[k]== 1){
+          aa <- EuropeanOption("call", t$Close[k+1], t$Close[k],t$Div_rate_monthly[k+1], (t$Free_rate[k+1]/100), (90-as.numeric(difftime(t$Date[k+1],t$Date[k])))/365, (t$VIX[k+1]/100))
+          bb <- EuropeanOption("call", t$Close[k], t$Close[k],t$Div_rate_monthly[k], (t$Free_rate[k]/100), 0.246575342, (t$VIX[k]/100))
+          } else {
+          aa <- EuropeanOption("put", t$Close[k+1], t$Close[k],t$Div_rate_monthly[k+1], (t$Free_rate[k+1]/100), (90-as.numeric(difftime(t$Date[k+1],t$Date[k])))/365, (t$VIX[k+1]/100))
+          bb <- EuropeanOption("put", t$Close[k], t$Close[k],t$Div_rate_monthly[k], (t$Free_rate[k]/100), 0.246575342, (t$VIX[k]/100))
+        }
+        t$port2_Relreturn[k+1] = (aa$value-bb$value) / bb$value * 100000
+      }
+      t <- t[-1,]
+      # store data
+      table_machine[count,1] = i
+      table_machine[count,2] = j
+      table_machine[count,3] = mean(t[,10])*252
+      table_machine[count,4] = var(t[,10])*252
+      a <- as.xts(t[,10],t$Date)
+      b <- as.xts(t[,3]/100,t$Date)
+      table_machine[count,5] = SharpeRatio(a,b,FUN = "StdDev")
+#      table_machine[count,5] = mean(sharpe(t[,10],r=t[,3]/100))
+      table_machine[count,6] = mean(t[,11])*252
+      table_machine[count,7] = var(t[,11])*252
+      c <- as.xts(t[,11],t$Date)
+      table_machine[count,8] = SharpeRatio(c,b,FUN = "StdDev")
+#      table_machine[count,8] = mean(sharpe(t[,11],r=t[,3]/100))
+      count = count +1
+    }
+  }
+}
+
+```
+
+##Opitimize
+
+#Signal
+```{r }
+
+table_machine <- read_csv("C:/Users/mingw/Dropbox/[IAQF_Max]/Data/table_machine.csv")
+
+attach(table_machine)
+
+head(table_machine[order(-port2_mean),], n=20)
+
+head(table_machine[order(-port2_sharp),], n=20)
+
+plot(table_machine$port1_mean,table_machine$port2_mean)
+
+plot(table_machine$port1_sharp,table_machine$port2_sharp)
+
+fff <- head(table_machine[order(-port2_sharp,-port2_mean),],n=50)
+
+alpha = .1
+fff$value_.1 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+alpha = .2
+fff$value_.2 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+alpha = .3
+fff$value_.3 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+alpha = .4
+fff$value_.4 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+
+attach(fff)
+head(fff[order(-port2_sharp),], n=10)
+head(fff[order(-value_.1),], n=10)
+head(fff[order(-value_.2),], n=10)
+head(fff[order(-value_.3),], n=10)
+head(fff[order(-value_.4),], n=10)
+
+```
+
+#T
+```{r }
+
+t <- tt
+t$SMA210 <- SMA(t$Close,210)
+t$SMA220 <- SMA(t$Close,220)
+t<- t[-1:-251,]     # here remove training 120
+for (k in seq_along(t$SMA220)){
+  if (t$SMA210[k]>t$SMA220[k])
+     t$signal[k] = 1            # signal = 1 is buy singal
+  else if (t$SMA210[k]<t$SMA220[k])
+     t$signal[k] = 0
+  else
+     t$signal[k] = t$singal[k-1]
+}
+
+table_machine_T <- data.frame(T=as.numeric(),port1_mean=as.numeric(),port1_var=as.numeric(),port1_sharp=as.numeric(),port2_mean=as.numeric(),port2_var=as.numeric(),port2_sharp=as.numeric())
+count = 1
+
+for (T in seq(10, 370, 30)){
+  # port1
+  t$port1_Relreturn[1] = NA
+  for (k in seq_along(t$Close[1:(length(t$Close)-1)])){
+    if (t$signal[k]== 1){
+       t$port1_Relreturn[k+1] = (t$Close[k+1]-t$Close[k]+t$Close[k]*t$Div_rate_monthly[k]/365*as.numeric(difftime(t$Date[k+1],t$Date[k]))) / t$Close[k] * 100000}
+    else{
+       t$port1_Relreturn[k+1] = (t$Close[k]-t$Close[k+1]) / t$Close[k] * 100000
+       }
+  }
+  # port 2
+  t$port2_Relreturn[1] = NA
+  for (k in seq_along(t$Close[1:(length(t$Close)-1)])){
+    if (t$signal[k]== 1){
+      aa <- EuropeanOption("call", t$Close[k+1], t$Close[k],t$Div_rate_monthly[k+1], (t$Free_rate[k+1]/100), (T-as.numeric(difftime(t$Date[k+1],t$Date[k])))/365, (t$VIX[k+1]/100))
+      bb <- EuropeanOption("call", t$Close[k], t$Close[k],t$Div_rate_monthly[k], (t$Free_rate[k]/100), T/365, (t$VIX[k]/100))}     else {
+      aa <- EuropeanOption("put", t$Close[k+1], t$Close[k],t$Div_rate_monthly[k+1], (t$Free_rate[k+1]/100), (T-as.numeric(difftime(t$Date[k+1],t$Date[k])))/365, (t$VIX[k+1]/100))
+      bb <- EuropeanOption("put", t$Close[k], t$Close[k],t$Div_rate_monthly[k], (t$Free_rate[k]/100), T/365, (t$VIX[k]/100))
+    }
+    t$port2_Relreturn[k+1] = (aa$value-bb$value) / bb$value * 100000
+  }
+  t <- t[-1,]
+  # store data
+  table_machine_T[count,1] = T
+  table_machine_T[count,2] = mean(t[,10])*252
+  table_machine_T[count,3] = var(t[,10])*252
+  a <- as.xts(t[,10],t$Date)
+  b <- as.xts(t[,3]/100,t$Date)
+  table_machine_T[count,4] = SharpeRatio(a,b,FUN = "StdDev")
+#  table_machine_T[count,4] = mean(sharpe(t[,10],r=t[,3]/100))
+  table_machine_T[count,5] = mean(t[,11])*252
+  table_machine_T[count,6] = var(t[,11])*252
+  c <- as.xts(t[,11],t$Date)
+  table_machine_T[count,7] = SharpeRatio(c,b,FUN = "StdDev")
+#  table_machine_T[count,7] = mean(sharpe(t[,11],r=t[,3]/100))
+  count = count +1
+}
+
+```
+
+#T
+```{r }
+
+table_machine_T <- read_csv("C:/Users/mingw/Dropbox/[IAQF_Max]/Data/table_machine_T.csv")
+#attach(table_machine_T)
+#
+# head(table_machine[order(-port2_mean),], n=20)
+# 
+# head(table_machine[order(-port2_sharp),], n=20)
+# 
+# plot(table_machine$port1_mean,table_machine$port2_mean)
+# 
+# plot(table_machine$port1_sharp,table_machine$port2_sharp)
+# 
+# fff <- head(table_machine[order(-port2_sharp,-port2_mean),],n=10)
+
+fff <- table_machine_T[-c(1,2,3),]
+alpha = .1
+fff$value_.1 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+alpha = .2
+fff$value_.2 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+alpha = .3
+fff$value_.3 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+alpha = .4
+fff$value_.4 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+alpha = .5
+fff$value_.5 <- fff$port2_mean/mean(fff$port2_mean)*alpha + fff$port2_sharp/mean(fff$port2_sharp)*(1-alpha)
+
+attach(fff)
+head(fff[order(-port2_sharp),], n=10)
+head(fff[order(-value_.1),], n=10)
+head(fff[order(-value_.2),], n=10)
+head(fff[order(-value_.3),], n=10)
+head(fff[order(-value_.4),], n=10)
+head(fff[order(-value_.5),], n=10)
+
+```
+
+
+
+#constrain on VIX
+#out the money
+#
+```{r }
+
+
+
+
+```
+

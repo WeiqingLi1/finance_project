@@ -1,0 +1,960 @@
+---
+title: "Exploration"
+author: "Panther"
+date: "Jan 28,2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Load Data
+
+```{r Load Data, message=FALSE}
+library(quanteda); library(tidyverse); library(TTR);library(ggplot2);library(scales); library(fOptions); library(pastecs); library(psych);library(crayon);library(PerformanceAnalytics);library(stats);library(RQuantLib);
+
+# here data read is being processed
+#t <- read_csv("../data/data_div.csv")
+#t <- read_csv("../Data/data.csv")
+t <- read_csv("F:/Dropbox/[IAQF]/Data/data.csv")
+t$Date <- strptime(as.character(t$Date), "%m/%d/%Y")
+format(t$Date, "%Y-%m-%d")
+t$Date <- as.Date(t$Date)
+
+```
+
+<!-- #Process Data -->
+
+<!-- ```{r Process Data} -->
+
+<!-- GSPC <- read_csv("../data/^GSPC.csv") -->
+<!-- LIBOR <- read_csv("../data/USD3MTD156N.csv") -->
+<!-- Treasury <- read_csv("../data/DTB3.csv") -->
+<!-- VIX <- read_csv("../data/^VIX.csv") -->
+
+<!-- #t$newDate <- strptime(as.character(t$Date), "%m/%d/%Y") -->
+<!-- #format(t$newDate, "%Y-%m-%d") -->
+<!-- #t$Date <- as.Date(t$newDate) -->
+<!-- #t <- t[-10] -->
+
+<!-- t<-cbind(GSPC,Treasury$DTB3[match(GSPC$Date,Treasury$DATE)]) -->
+<!-- t<-cbind(t,VIX$Close[match(t$Date,VIX$Date)]) -->
+<!-- t<-t[,c(1,5,8,9)] -->
+<!-- t<- t[-1:(-10054+120),]  # extra 120 for training signal, will remove later -->
+<!-- colnames(t)[3] <- "Free_rate" -->
+<!-- colnames(t)[4] <- "VIX" -->
+<!-- t$Free_rate = as.numeric(as.character(t$Free_rate)) -->
+
+
+<!-- ``` -->
+
+<!-- #Missing Data -->
+
+<!-- ```{r Missing Data} -->
+
+<!-- sum(is.na(t)) -->
+<!-- sum(is.na(t$Close)) -->
+<!-- sum(is.na(t$Free_rate)) -->
+<!-- sum(is.na(t$VIX)) -->
+
+<!-- which(is.na(t$Free_rate)) -->
+<!-- #count(which(is.na(t$Free_rate))) -->
+
+<!-- temp <- which(is.na(t$Free_rate)) -->
+<!-- for (i in temp) -->
+<!--   t$Free_rate[i] <- mean(t$Free_rate[(i-5):(i+5)], na.rm=TRUE) -->
+
+<!-- sum(is.na(t$Free_rate)) -->
+
+<!-- ``` -->
+
+<!-- #Moving Average and momentum signal -->
+
+<!-- ```{r momentum signal} -->
+
+<!-- t$SMA60 <- SMA(t$Close,60) -->
+<!-- t$SMA120 <- SMA(t$Close,120) -->
+<!-- t<- t[-1:-120,]     # here remove training 120 -->
+<!-- for (i in seq_along(t$SMA120)){ -->
+<!--   if (t$SMA60[i]>t$SMA120[i]) -->
+<!--      t$signal[i] = 1            # signal = 1 is buy singal -->
+<!--   else if (t$SMA60[i]<t$SMA120[i]) -->
+<!--      t$signal[i] = 0 -->
+<!--   else  -->
+<!--      t$signal[i] = t$singal[i-1] -->
+<!-- } -->
+
+<!-- ``` -->
+
+#Plot SPC and moving average
+
+```{r Plot index and moving average}
+
+t$POSIXct_Date <- as.POSIXct(t$Date)
+
+ggplot(t,aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=Close,color="Close")) +
+  geom_line(aes(y=SMA60,color="SMA60")) +
+  geom_line(aes(y=SMA120,color="SMA120"))+ 
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")+
+  scale_colour_manual("", breaks = c("Close", "SMA60","SMA120"),
+                          values = c("blue", "red","green")) +
+  ggtitle("Closing index and moving averge for all data")
+
+a = 4500
+c = 7069
+
+ggplot(t[a:c,],aes(x=POSIXct_Date)) + 
+  geom_line(aes(y=Close,color="Close")) +
+  geom_line(aes(y=SMA60,color="SMA60")) +
+  geom_line(aes(y=SMA120,color="SMA120"))+ 
+  scale_x_datetime(breaks=date_breaks("1 year"),labels = date_format("%y")) +
+  labs(color="Legend")+
+  scale_colour_manual("", breaks = c("Close", "SMA60","SMA120"),
+                          values = c("blue", "red","green")) +
+  ggtitle("Closing index and moving averge for 10 years")
+
+```
+
+
+<!-- ## Create portfolios -->
+<!-- Absolute Return = shift between one lag of close prices  -->
+<!-- Percentage Return = Absolute Return / last day close price -->
+<!-- Relative Return = Percentage return * initiate price($100,000)  -->
+<!-- We use Relative Return as analysis object -->
+
+<!-- #portfolio 1 -->
+<!-- Buy/short 1 index on today's closing and close position next day -->
+<!-- Assume when you short today, you buy an index for paying back next day   -->
+<!-- Recieve dividend while buying -->
+
+<!-- ```{r portfolio 1} -->
+
+<!-- #t$port1_absreturn[1] = NA -->
+<!-- #t$port1_Perreturn[1] = NA -->
+<!-- t$port1_Relreturn[1] = NA -->
+
+
+<!-- for (i in seq_along(t$Close[1:(length(t$Close)-1)])){ -->
+<!--   if (t$signal[i]== 1){ -->
+<!-- #     t$port1_absreturn[i+1] = t$Close[i+1]-t$Close[i] -->
+<!-- #     t$port1_Perreturn[i+1] = (t$Close[i+1]-t$Close[i]) / t$Close[i] -->
+<!--      t$port1_Relreturn[i+1] = (t$Close[i+1]-t$Close[i]+t$Close[i]*t$DivYield[i]/365*as.numeric(difftime(t$Date[i+1],t$Date[i]))) / t$Close[i] * 100000 -->
+<!--      } -->
+<!--   else{  -->
+<!-- #     t$port1_absreturn[i+1] = t$Close[i]-t$Close[i+1] -->
+<!-- #     t$port1_Perreturn[i+1] = (t$Close[i]-t$Close[i+1]) / t$Close[i] -->
+<!--      t$port1_Relreturn[i+1] = (t$Close[i]-t$Close[i+1]) / t$Close[i] * 100000 -->
+<!--      } -->
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- #portfolio 2 -->
+<!-- Buy at the money call/put option(90 days maturity) on today's closing and close position next day -->
+<!-- Volatility is VIX -->
+<!-- Risk free rate is 90 days T-bill rate -->
+<!-- Consider dividends -->
+
+<!-- ```{r portfolio 2} -->
+
+<!-- #t$port2_absreturn[1] = NA -->
+<!-- #t$port2_Perreturn[1] = NA -->
+<!-- t$port2_Relreturn[1] = NA -->
+
+<!-- #if (t$signal[1] == 1) { -->
+<!-- #  cc <- GBSOption("c",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100)) -->
+<!-- #  } else {  -->
+<!-- #  cc <- GBSOption("p",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100)) -->
+
+<!-- # for (i in seq_along(t$Close[1:(length(t$Close)-1)])){ -->
+<!-- #         -->
+<!-- #   if (t$signal[i]== 1){ -->
+<!-- #      aa <- GBSOption("c",t$Close[i+1],t$Close[i],(90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365,(t$Free_rate[i+1]/100),0,(t$VIX[i+1]/100)) -->
+<!-- #      bb <- GBSOption("c",t$Close[i],t$Close[i],0.246575342,(t$Free_rate[i]/100),0,(t$VIX[i]/100)) -->
+<!-- #     } else{  -->
+<!-- #      aa <- GBSOption("p",t$Close[i+1],t$Close[i],(90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365,(t$Free_rate[i+1]/100),0,(t$VIX[i+1]/100)) -->
+<!-- #      bb <- GBSOption("p",t$Close[i],t$Close[i],0.246575342,(t$Free_rate[i]/100),0,(t$VIX[i]/100)) -->
+<!-- #     } -->
+<!-- #      t$port2_absreturn[i+1] = aa@price-bb@price -->
+<!-- #      t$port2_Perreturn[i+1] = (aa@price-bb@price) / bb@price -->
+<!-- # #     t$port2_Relreturn[i+1] = t$port2_Perreturn[i+1] * t$Close[1] -->
+<!-- # } -->
+
+<!-- for (i in seq_along(t$Close[1:(length(t$Close)-1)])){ -->
+
+<!--   if (t$signal[i]== 1){ -->
+<!--     aa <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$DivYield[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))  -->
+<!--     bb <- EuropeanOption("call", t$Close[i], t$Close[i],t$DivYield[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100))  -->
+<!--     } else { -->
+<!--     aa <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$DivYield[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))  -->
+<!--     bb <- EuropeanOption("put", t$Close[i], t$Close[i],t$DivYield[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100))        -->
+<!--   } -->
+<!-- #     t$port2_absreturn[i+1] = aa$value-bb$value -->
+<!-- #     t$port2_Perreturn[i+1] = (aa$value-bb$value) / bb$value -->
+<!--      t$port2_Relreturn[i+1] = (aa$value-bb$value) / bb$value * 100000 -->
+<!-- } -->
+
+<!-- ``` -->
+
+
+<!-- #portfolio 3 -->
+<!-- Buy at the money straddle(90 days maturity) on today's closing and close position next day -->
+<!-- Volatility is VIX -->
+<!-- Risk free rate is 90 days T-bill rate -->
+<!-- Consider dividends -->
+
+
+<!-- ```{r portfolio 3} -->
+
+<!-- #t$port3_absreturn[1] = NA -->
+<!-- #t$port3_Perreturn[1] = NA -->
+<!-- t$port3_Relreturn[1] = NA -->
+
+<!-- #ca <- GBSOption("c",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100)) -->
+<!-- #cb <- GBSOption("p",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100)) -->
+<!-- #cc = ca@price + cb@price -->
+
+<!-- for (i in seq_along(t$Close[1:(length(t$Close)-1)])){ -->
+<!--     aa1 <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$DivYield[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))  -->
+<!--     aa2 <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$DivYield[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))    -->
+<!--     bb1 <- EuropeanOption("call", t$Close[i], t$Close[i],t$DivYield[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100)) -->
+<!--     bb2 <- EuropeanOption("put", t$Close[i], t$Close[i],t$DivYield[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100))      -->
+
+<!-- #    t$port3_absreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) -->
+<!-- #    t$port3_Perreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value) -->
+<!--     t$port3_Relreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)*100000 -->
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- #portfolio 4 -->
+<!-- Buy at the money straddle(90 days maturity but remain life decrease until rebalance at maturity)  -->
+<!-- - on today's closing and close position next day -->
+<!-- Volatility is VIX -->
+<!-- Risk free rate is 90 days T-bill rate -->
+<!-- Consider dividends -->
+
+<!-- ```{r portfolio 4} -->
+
+<!-- #t$port4_absreturn[1] = NA -->
+<!-- #t$port4_Perreturn[1] = NA -->
+<!-- t$port4_Relreturn[1] = NA -->
+
+<!-- #ca <- GBSOption("c",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100)) -->
+<!-- #cb <- GBSOption("p",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100)) -->
+<!-- #cc = ca@price + cb@price -->
+
+<!-- #date.lookup <- format(seq(as.Date("2000-01-02"), as.Date("2018-1-19"), by = "1 day")) -->
+<!-- #date.except <- subset(b, !(y %in% a$x)) -->
+<!-- #match("2024-01-19", date.lookup) -->
+
+<!-- count=0   #count days passed -->
+
+<!-- for (i in seq_along(t$Close[1:(length(t$Close)-1)])){ -->
+
+<!--   if (as.numeric(difftime(t$Date[i+1],t$Date[i])) == 1){   #workday -->
+<!--     count = count+1} -->
+<!--   else {                                            # not workday -->
+<!--     count = count+as.numeric(difftime(t$Date[i+1],t$Date[i])) } -->
+
+<!--   if (count <= 89){ -->
+<!--     Remaina = 90 - count         # today's remain -->
+<!--     Remainb = Remaina + 1}        # previous day's remain -->
+<!--   else if (count >= 90) {       # expired already, adjuste to 90 days passed -->
+<!--     Remaina = 0                 # today's remain -->
+<!--     Remainb = 1                 # previous day's remain -->
+<!--     count = 0 }                 # after expired, rebalance -->
+
+<!--   aa1 <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$DivYield[i+1], (t$Free_rate[i+1]/100), 0.246575342*Remaina/90, (t$VIX[i+1]/100),0, 0)  -->
+<!--   aa2 <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$DivYield[i+1], (t$Free_rate[i+1]/100), 0.246575342*Remaina/90, (t$VIX[i+1]/100),0, 0)    -->
+<!--   bb1 <- EuropeanOption("call", t$Close[i], t$Close[i],t$DivYield[i], (t$Free_rate[i]/100), 0.246575342*Remainb/90, (t$VIX[i]/100),0, 0)  -->
+<!--   bb2 <- EuropeanOption("put", t$Close[i], t$Close[i],t$DivYield[i], (t$Free_rate[i]/100), 0.246575342*Remainb/90, (t$VIX[i]/100),0, 0)  -->
+
+
+<!-- #  t$port4_absreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) -->
+<!-- #  t$port4_Perreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value) -->
+<!--   t$port4_Relreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)*100000 -->
+<!-- } -->
+
+<!-- ``` -->
+
+
+<!-- #Dump first day NA return -->
+<!-- ```{r} -->
+<!-- t <- t[-1,]  -->
+<!-- ``` -->
+
+#Momentum effect of portfolio returns
+Obvious autocorrelation, large ARMA parameters
+
+```{r Momentum effect}
+
+acf(t$port1_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port1_Relreturn,lag.max = 50)
+
+acf(t$port2_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port2_Relreturn,lag.max = 50)
+
+acf(t$port3_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port3_Relreturn,lag.max = 50)
+
+acf(t$port3_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port3_Relreturn,lag.max = 50)
+
+```
+
+
+
+#Line Plot Absolute Return
+
+```{r Line Plot Absolute Return}
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port1_absreturn))
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port2_absreturn))
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port3_absreturn))
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port4_absreturn))
+
+
+```
+
+#Line Plot Percentage Return
+
+```{r Line Plot Percentage Return}
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port1_Perreturn))
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port2_Perreturn))
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port3_Perreturn))
+
+#ggplot(t,aes(x=Date)) + 
+#  geom_line(aes(y=port4_Perreturn))
+
+
+```
+
+
+# Scatter of RelReturn
+
+```{r Scatter Plot RelReturn}
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port1_Relreturn),size =1, shape= 1)
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port2_Relreturn),size =1, shape= 1)
+
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port3_Relreturn),size =1, shape= 1)
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port4_Relreturn),size =1, shape= 1) +
+  ylim(-250000,350000)
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port1_Relreturn,color="Port1"),alpha=0.2) +
+  geom_point(aes(y=port2_Relreturn,color="Port2"),alpha=0.2) +
+  geom_point(aes(y=port3_Relreturn,color="Port3"),alpha=0.2) +
+  geom_point(aes(y=port4_Relreturn,color="Port4"),alpha=0.2) +
+  ylim(-100000,200000) +
+  theme_bw() +
+  ggtitle("Relreturn comparing for four portfolios")
+
+#a = 4500
+#c = 7068
+
+#ggplot(t[a:c,],aes(x=Date)) + 
+#  geom_point(aes(y=port1_absreturn,color="Port1"),alpha=0.5,shape= 1) +
+#  geom_point(aes(y=port2_absreturn,color="Port2"),alpha=0.5,shape= 0) +
+#  geom_point(aes(y=port3_absreturn,color="Port3"),alpha=0.5,shape= 2) +
+#  geom_point(aes(y=port4_absreturn,color="Port4"),alpha=0.5,shape= 5) +
+#  theme_bw() +
+#  ggtitle("absreturn Return comparing for four portfolios in 10 years")
+
+```
+
+<!-- # Scatter of Percentage Return -->
+
+<!-- ```{r Scatter Plot Percentage Return} -->
+
+<!-- ggplot(t,aes(x=Date)) +  -->
+<!--   geom_point(aes(y=port1_Perreturn),size =1, shape= 1) -->
+
+<!-- ggplot(t,aes(x=Date)) +  -->
+<!--   geom_point(aes(y=port2_Perreturn),size =1, shape= 1) -->
+
+<!-- ggplot(t,aes(x=Date)) +  -->
+<!--   geom_point(aes(y=port3_Perreturn),size =1, shape= 1) -->
+
+<!-- ggplot(t,aes(x=Date)) +  -->
+<!--   geom_point(aes(y=port4_Perreturn),size =1, shape= 1) -->
+
+<!-- ggplot(t,aes(x=Date)) +  -->
+<!--   geom_point(aes(y=port1_Perreturn,color="Port1"),alpha=0.2) + -->
+<!--   geom_point(aes(y=port2_Perreturn,color="Port2"),alpha=0.2) + -->
+<!--   geom_point(aes(y=port3_Perreturn,color="Port3"),alpha=0.2) + -->
+<!--   geom_point(aes(y=port4_Perreturn,color="Port4"),alpha=0.2) + -->
+<!--   theme_bw() + -->
+<!--   ggtitle("percentage Return comparing for four portfolios") -->
+
+<!-- #a = 4500 -->
+<!-- #c = 7068 -->
+
+<!-- #ggplot(t[a:c,],aes(x=Date)) +  -->
+<!-- #  geom_point(aes(y=port1_Perreturn,color="Port1"),alpha=0.5,shape= 1) + -->
+<!-- #  geom_point(aes(y=port2_Perreturn,color="Port2"),alpha=0.5,shape= 0) + -->
+<!-- #  geom_point(aes(y=port3_Perreturn,color="Port3"),alpha=0.5,shape= 2) + -->
+<!-- #  geom_point(aes(y=port4_Perreturn,color="Port4"),alpha=0.5,shape= 5) + -->
+<!-- #  theme_bw() + -->
+<!-- #  ggtitle("percentage Return comparing for four portfolios in 10 years") -->
+
+<!-- ``` -->
+
+#Histogram of RelReturn
+Portfolio 2 is strongly non-central and skewed
+Portfolio 4 is pretty discrete
+
+```{r Histogram Plot RelReturn}
+
+ggplot(t,aes(x = port1_Relreturn)) + 
+  geom_histogram(aes(y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port1_Relreturn),sd = sd(t$port1_Relreturn))) +
+  theme_bw()
+
+ggplot(t,aes(x = port2_Relreturn)) + 
+  geom_histogram(aes(y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port2_Relreturn),sd = sd(t$port2_Relreturn))) +
+  theme_bw()
+
+ggplot(t,aes(x = port3_Relreturn)) + 
+  geom_histogram(aes(y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port3_Relreturn),sd = sd(t$port3_Relreturn))) +
+  theme_bw()
+
+ggplot(t,aes(x = port4_Relreturn)) + 
+  geom_histogram(aes(binwidth = 1,y=..density..,fill=..count..)) +
+  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port4_Relreturn),sd = sd(t$port4_Relreturn))) +
+#  xlim(-10000,10000) +
+  theme_bw()
+
+#a = 4500
+#c = 7068
+
+#print("Absolute Return in 10 years")
+
+#ggplot(t[a:c,],aes(x = port1_absreturn)) + 
+#  geom_histogram(binwidth = 1,aes(y=..density..,fill=..count..)) +
+#  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port1_absreturn),sd = sd(t$port1_absreturn))) +
+#  theme_bw()
+
+#ggplot(t[a:c,],aes(x = port2_absreturn)) + 
+#  geom_histogram(binwidth = 1,aes(y=..density..,fill=..count..)) +
+#  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port2_absreturn),sd = sd(t$port2_absreturn))) +
+#  theme_bw()
+
+#ggplot(t[a:c,],aes(x = port3_absreturn)) + 
+#  geom_histogram(binwidth = 1,aes(y=..density..,fill=..count..)) +
+#  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port3_absreturn),sd = sd(t$port3_absreturn))) +
+#  theme_bw()
+
+#ggplot(t[a:c,],aes(x = port4_absreturn)) + 
+#  geom_histogram(binwidth = 1,aes(y=..density..,fill=..count..)) +
+#  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port4_absreturn),sd = sd(t$port4_absreturn))) +
+#  theme_bw()
+
+```
+
+<!-- #Histogram of Percentage Return -->
+
+<!-- ```{r Histogram Plot Percentage Return} -->
+
+<!-- ggplot(t,aes(x = port1_Perreturn)) +  -->
+<!--   geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!--   stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port1_Perreturn),sd = sd(t$port1_Perreturn))) + -->
+<!--   theme_bw() -->
+
+<!-- ggplot(t,aes(x = port2_Perreturn)) +  -->
+<!--   geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!--   stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port2_Perreturn),sd = sd(t$port2_Perreturn))) + -->
+<!--   theme_bw() -->
+
+<!-- ggplot(t,aes(x = port3_Perreturn)) +  -->
+<!--   geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!--   stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port3_Perreturn),sd = sd(t$port3_Perreturn))) + -->
+<!--   theme_bw() -->
+
+<!-- ggplot(t,aes(x = port4_Perreturn)) +  -->
+<!--   geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!--   stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port4_Perreturn),sd = sd(t$port4_Perreturn))) + -->
+<!--   theme_bw() -->
+
+<!-- #a = 4500 -->
+<!-- #c = 7068 -->
+
+<!-- #print("Percentage Return in 10 years") -->
+
+<!-- #ggplot(t[a:c,],aes(x = port1_Perreturn)) +  -->
+<!-- #  geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!-- #  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port1_Perreturn),sd = sd(t$port1_Perreturn))) + -->
+<!-- #  theme_bw() -->
+
+<!-- #ggplot(t[a:c,],aes(x = port2_Perreturn)) +  -->
+<!-- #  geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!-- #  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port2_Perreturn),sd = sd(t$port2_Perreturn))) + -->
+<!-- #  theme_bw() -->
+
+<!-- #ggplot(t[a:c,],aes(x = port3_Perreturn)) +  -->
+<!-- #  geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!-- #  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port3_Perreturn),sd = sd(t$port3_Perreturn))) + -->
+<!-- #  theme_bw() -->
+
+<!-- #ggplot(t[a:c,],aes(x = port4_Perreturn)) +  -->
+<!-- #  geom_histogram(binwidth = 0.001,aes(y=..density..,fill=..count..)) + -->
+<!-- #  stat_function(fun = dnorm, color="red", args = list(mean = mean(t$port4_Perreturn),sd = sd(t$port4_Perreturn))) + -->
+<!-- #  theme_bw() -->
+
+<!-- ``` -->
+
+
+#QQ plot of Relreturn
+
+```{r QQ Plot Relreturn}
+
+ggplot(t, aes(sample=port1_Relreturn)) +  stat_qq() 
+ggplot(t, aes(sample=port2_Relreturn)) +  stat_qq() 
+ggplot(t, aes(sample=port3_Relreturn)) +  stat_qq() 
+ggplot(t, aes(sample=port4_Relreturn)) +  stat_qq() 
+
+#a = 4500
+#c = 7068
+
+#print("Absolute Return in 10 years")
+
+#ggplot(t[a:c,], aes(sample=port1_absreturn)) +  stat_qq() 
+#ggplot(t[a:c,], aes(sample=port2_absreturn)) +  stat_qq() 
+#ggplot(t[a:c,], aes(sample=port3_absreturn)) +  stat_qq() 
+#ggplot(t[a:c,], aes(sample=port4_absreturn)) +  stat_qq() 
+
+
+```
+
+<!-- #QQ plot of Percentage Return -->
+
+<!-- ```{r QQ Plot Percentage Return} -->
+
+<!-- ggplot(t, aes(sample=port1_Perreturn)) +  stat_qq()  -->
+<!-- ggplot(t, aes(sample=port2_Perreturn)) +  stat_qq()  -->
+<!-- ggplot(t, aes(sample=port3_Perreturn)) +  stat_qq()  -->
+<!-- ggplot(t, aes(sample=port4_Perreturn)) +  stat_qq()  -->
+
+<!-- #a = 4500 -->
+<!-- #c = 7068 -->
+
+<!-- #print("Percentage Return in 10 years") -->
+
+<!-- #ggplot(t[a:c,], aes(sample=port1_Perreturn)) +  stat_qq()  -->
+<!-- #ggplot(t[a:c,], aes(sample=port2_Perreturn)) +  stat_qq()  -->
+<!-- #ggplot(t[a:c,], aes(sample=port3_Perreturn)) +  stat_qq()  -->
+<!-- #ggplot(t[a:c,], aes(sample=port4_Perreturn)) +  stat_qq()  -->
+
+
+<!-- ``` -->
+
+#Statistics of Relreturn
+
+```{r Statistics of Relreturn}
+
+cat(red("Relreturn Statistics in all time\n"))
+cat(blue("Portfolio 1\n"))
+stat.desc(t$port1_Relreturn)
+describe(t$port1_Relreturn)
+
+cat(blue("Portfolio 2\n"))
+stat.desc(t$port2_Relreturn)
+describe(t$port2_Relreturn)
+
+cat(blue("Portfolio 3\n"))
+stat.desc(t$port3_Relreturn)
+describe(t$port3_Relreturn)
+
+cat(blue("Portfolio 4\n"))
+stat.desc(t$port4_Relreturn)
+describe(t$port4_Relreturn)
+
+# a = 4500
+# c = 7068
+# 
+# cat(red("absreturn Statistics in 10 years\n"))
+# cat(blue("Portfolio 1\n"))
+# stat.desc(t$port1_absreturn[a:c])
+# describe(t$port1_absreturn[a:c])
+# 
+# cat(blue("Portfolio 2\n"))
+# stat.desc(t$port2_absreturn[a:c])
+# describe(t$port2_absreturn[a:c])
+# 
+# cat(blue("Portfolio 3\n"))
+# stat.desc(t$port3_absreturn[a:c])
+# describe(t$port3_absreturn[a:c])
+# 
+# cat(blue("Portfolio 4\n"))
+# stat.desc(t$port4_absreturn[a:c])
+# describe(t$port4_absreturn[a:c])
+
+```
+
+
+
+<!-- #Statistics of Percentage Return -->
+
+<!-- ```{r Statistics of Percentage Return} -->
+
+<!-- cat(red("Percentage Statistics in all time\n")) -->
+<!-- cat(blue("Portfolio 1\n")) -->
+<!-- stat.desc(t$port1_Perreturn) -->
+<!-- describe(t$port1_Perreturn) -->
+
+<!-- cat(blue("Portfolio 2\n")) -->
+<!-- stat.desc(t$port2_Perreturn) -->
+<!-- describe(t$port2_Perreturn) -->
+
+<!-- cat(blue("Portfolio 3\n")) -->
+<!-- stat.desc(t$port3_Perreturn) -->
+<!-- describe(t$port3_Perreturn) -->
+
+<!-- cat(blue("Portfolio 4\n")) -->
+<!-- stat.desc(t$port4_Perreturn) -->
+<!-- describe(t$port4_Perreturn) -->
+
+<!-- a = 4500 -->
+<!-- c = 7068 -->
+
+<!-- cat(red("Percentage Statistics in 10 years\n")) -->
+<!-- cat(blue("Portfolio 1\n")) -->
+<!-- stat.desc(t$port1_Perreturn[a:c]) -->
+<!-- describe(t$port1_Perreturn[a:c]) -->
+
+<!-- cat(blue("Portfolio 2\n")) -->
+<!-- stat.desc(t$port2_Perreturn[a:c]) -->
+<!-- describe(t$port2_Perreturn[a:c]) -->
+
+<!-- cat(blue("Portfolio 3\n")) -->
+<!-- stat.desc(t$port3_Perreturn[a:c]) -->
+<!-- describe(t$port3_Perreturn[a:c]) -->
+
+<!-- cat(blue("Portfolio 4\n")) -->
+<!-- stat.desc(t$port4_Perreturn[a:c]) -->
+<!-- describe(t$port4_Perreturn[a:c]) -->
+
+<!-- ``` -->
+
+#Statistics Comparison
+
+```{r Statistics table}
+
+base <- t[,c(10,11,12,13)]
+colnames(base) <- c("port1_Relreturn","port2_Relreturn","port3_Relreturn","port4_Relreturn")
+
+#base <- t[,c(9,11,13,15)]
+#colnames(base) <- c("port1_absreturn","port2_absreturn","port3_absreturn","port4_absreturn")
+
+stat <- sapply(base,sum) %>%
+  rbind(sapply(base,mean)) %>%
+  rbind(sapply(base,mean)*252) %>%
+  rbind(sapply(base,var)) %>%
+  rbind(sapply(base,skew)) %>%
+  rbind(sapply(base,kurtosis))
+
+rownames(stat) <- c("sum","mean","annual mean","var","skew","kurtosis")
+
+print("Statistics in all time")
+print(stat)
+
+# a = 4500
+# c = 7068
+# 
+# stat2 <- sapply(base[a:c,],sum) %>%
+#   rbind(sapply(base[a:c,],mean)) %>%
+#   rbind(sapply(base[a:c,],mean)*252) %>%
+#   rbind(sapply(base[a:c,],var)) %>%
+#   rbind(sapply(base[a:c,],skew)) %>%
+#   rbind(sapply(base[a:c,],kurtosis))
+# 
+# rownames(stat2) <- c("sum","mean","annual mean","var","skew","kurtosis") 
+# 
+# print("Statistics in 10 years")
+# print(stat2)
+
+
+```
+
+#Culmulative RelReturn
+See how the cost of options and straddles ruined your return
+
+
+```{r Culmulative Relreturn}
+
+t$port1_cum_Relreturn <- cumsum(t$port1_Relreturn)
+t$port2_cum_Relreturn <- cumsum(t$port2_Relreturn)
+t$port3_cum_Relreturn <- cumsum(t$port3_Relreturn)
+t$port4_cum_Relreturn <- cumsum(t$port4_Relreturn)
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_cum_Relreturn,color="Port1")) +
+  geom_line(aes(y=port2_cum_Relreturn,color="Port2")) +
+  geom_line(aes(y=port3_cum_Relreturn,color="Port3")) +
+  geom_line(aes(y=port4_cum_Relreturn,color="Port4")) +
+#  ylim(-10000000,50000000) +
+  theme_bw() +
+  ggtitle("abs Return comparing in all time")
+
+# a = 4500
+# c = 7068
+# t$port1_cum_abs_return2[a:c]<-cumsum(t$port1_Relreturn[a:c])
+# t$port2_cum_abs_return2[a:c]<-cumsum(t$port2_Relreturn[a:c])
+# t$port3_cum_abs_return2[a:c]<-cumsum(t$port3_Relreturn[a:c])
+# t$port4_cum_abs_return2[a:c]<-cumsum(t$port4_Relreturn[a:c])
+# 
+# ggplot(t[a:c,],aes(x=Date)) + 
+#   geom_line(aes(y=port1_cum_abs_return2,color="Port1")) +
+#   geom_line(aes(y=port2_cum_abs_return2,color="Port2")) +
+#   geom_line(aes(y=port3_cum_abs_return2,color="Port3")) +
+#   geom_line(aes(y=port4_cum_abs_return2,color="Port4")) +
+#   theme_bw() +
+#   ggtitle("abs Return comparing in 10 years")
+
+```
+<!-- #Culmulative percentage Return(see initiate invest as $1) -->
+<!-- See how the cost of options and straddles ruined your return -->
+
+
+<!-- ```{r Culmulative per returns} -->
+
+<!-- t$port1_cum_per_return<-cumsum(t$port1_Perreturn) -->
+<!-- t$port2_cum_per_return<-cumsum(t$port2_Perreturn) -->
+<!-- t$port3_cum_per_return<-cumsum(t$port3_Perreturn) -->
+<!-- t$port4_cum_per_return<-cumsum(t$port4_Perreturn) -->
+
+<!-- ggplot(t,aes(x=Date)) +  -->
+<!--   geom_line(aes(y=port1_cum_per_return,color="Port1")) + -->
+<!--   geom_line(aes(y=port2_cum_per_return,color="Port2")) + -->
+<!--   geom_line(aes(y=port3_cum_per_return,color="Port3")) + -->
+<!--   geom_line(aes(y=port4_cum_per_return,color="Port4")) + -->
+<!--   theme_bw() + -->
+<!--   ggtitle("per Return comparing in all time") -->
+
+<!-- a = 4500 -->
+<!-- c = 7068 -->
+<!-- t$port1_cum_per_return2[a:c]<-cumsum(t$port1_Perreturn[a:c]) -->
+<!-- t$port2_cum_per_return2[a:c]<-cumsum(t$port2_Perreturn[a:c]) -->
+<!-- t$port3_cum_per_return2[a:c]<-cumsum(t$port3_Perreturn[a:c]) -->
+<!-- t$port4_cum_per_return2[a:c]<-cumsum(t$port4_Perreturn[a:c]) -->
+
+<!-- ggplot(t[a:c,],aes(x=Date)) +  -->
+<!--   geom_line(aes(y=port1_cum_per_return2,color="Port1")) + -->
+<!--   geom_line(aes(y=port2_cum_per_return2,color="Port2")) + -->
+<!--   geom_line(aes(y=port3_cum_per_return2,color="Port3")) + -->
+<!--   geom_line(aes(y=port4_cum_per_return2,color="Port4")) + -->
+<!--   theme_bw() + -->
+<!--   ggtitle("per Return comparing in 10 years") -->
+
+<!-- ``` -->
+
+
+
+#Realized Volatility on Relreturn
+Realized Vol is limited, 10 years has upper boundary
+
+
+```{r Realized Volatility}
+
+t$port1_real_vol <- 252*cumsum(t$port1_Relreturn^2)/seq(length(t$port1_Relreturn)) %>% sqrt()
+t$port2_real_vol <- 252*cumsum(t$port2_Relreturn^2)/seq(length(t$port2_Relreturn)) %>% sqrt()
+t$port3_real_vol <- 252*cumsum(t$port3_Relreturn^2)/seq(length(t$port3_Relreturn)) %>% sqrt()
+t$port4_real_vol <- 252*cumsum(t$port4_Relreturn^2)/seq(length(t$port4_Relreturn)) %>% sqrt()
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_real_vol,color="Port1")) +
+  geom_line(aes(y=port2_real_vol,color="Port2")) +
+  geom_line(aes(y=port3_real_vol,color="Port3")) +
+  geom_line(aes(y=port4_real_vol,color="Port4")) +
+#  ylim(-1000,10000) +
+  theme_bw() +
+  ggtitle("Realized Volatility in all time")
+
+# a = 4500
+# c = 7068
+# 
+# t$port1_real_vol2[a:c] <- 252*cumsum(t$port1_absreturn[a:c]^2)/seq(length(t$port1_absreturn[a:c])) %>% sqrt()
+# t$port2_real_vol2[a:c] <- 252*cumsum(t$port2_absreturn[a:c]^2)/seq(length(t$port2_absreturn[a:c])) %>% sqrt()
+# t$port3_real_vol2[a:c] <- 252*cumsum(t$port3_absreturn[a:c]^2)/seq(length(t$port3_absreturn[a:c])) %>% sqrt()
+# t$port4_real_vol2[a:c] <- 252*cumsum(t$port4_absreturn[a:c]^2)/seq(length(t$port4_absreturn[a:c])) %>% sqrt()
+# 
+# ggplot(t[a:c,],aes(x=Date)) + 
+#   geom_line(aes(y=port1_real_vol2,color="Port1")) +
+#   geom_line(aes(y=port2_real_vol2,color="Port2")) +
+#   geom_line(aes(y=port3_real_vol2,color="Port3")) +
+#   geom_line(aes(y=port4_real_vol2,color="Port4")) +
+#   theme_bw() +
+#   ggtitle("Realized Volatility in 10 years")
+
+```
+
+
+#Rolling Analysis annually(252 days)
+Rolling mean is smoother, bur going worse. 
+Rolling vlo is controlled. 
+Rolling correlation is towards positive, which is not we expecting.
+
+
+```{r Rolling Analysis annually}
+
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+port2 <- xts(x=t$port2_Relreturn, order.by=t$Date)
+port3 <- xts(x=t$port3_Relreturn, order.by=t$Date)
+port4 <- xts(x=t$port4_Relreturn, order.by=t$Date)
+
+t$port1_roll_mean <- apply.rolling(port1,252,gap=252,by=1,FUN="mean")
+t$port2_roll_mean <- apply.rolling(port2,252,gap=252,by=1,FUN="mean")
+t$port3_roll_mean <- apply.rolling(port3,252,gap=252,by=1,FUN="mean")
+t$port4_roll_mean <- apply.rolling(port4,252,gap=252,by=1,FUN="mean")
+
+t$port1_roll_vol <- apply.rolling(port1,252,gap=252,by=1,FUN="sd")
+t$port2_roll_vol <- apply.rolling(port2,252,gap=252,by=1,FUN="sd")
+t$port3_roll_vol <- apply.rolling(port3,252,gap=252,by=1,FUN="sd")
+t$port4_roll_vol <- apply.rolling(port4,252,gap=252,by=1,FUN="sd")
+
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_mean,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_mean,na.rm = TRUE)) 
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_vol,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_vol,na.rm = TRUE))
+
+chart.RollingCorrelation(t$port1_roll_mean, t$port1_roll_vol,252)
+chart.RollingCorrelation(t$port2_roll_mean, t$port2_roll_vol,252)
+chart.RollingCorrelation(t$port3_roll_mean, t$port3_roll_vol,252)
+chart.RollingCorrelation(t$port4_roll_mean, t$port4_roll_vol,252)
+
+```
+
+#Rolling Analysis 60 days
+Rolling mean is smoother, bur going worse. 
+Rolling vlo is controlled. 
+Rolling correlation is towards positive, which is not we expecting.
+
+```{r Rolling Analysis 60 days}
+
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+t$port1_roll_mean <- apply.rolling(port1,60,gap=60,by=1,FUN="mean")
+t$port1_roll_vol <- apply.rolling(port1,60,gap=60,by=1,FUN="sd")
+port2 <- xts(x=t$port2_Relreturn, order.by=t$Date)
+t$port2_roll_mean <- apply.rolling(port2,60,gap=60,by=1,FUN="mean")
+t$port2_roll_vol <- apply.rolling(port2,60,gap=60,by=1,FUN="sd")
+port3 <- xts(x=t$port3_Relreturn, order.by=t$Date)
+t$port3_roll_mean <- apply.rolling(port3,60,gap=60,by=1,FUN="mean")
+t$port3_roll_vol <- apply.rolling(port3,60,gap=60,by=1,FUN="sd")
+port4 <- xts(x=t$port4_Relreturn, order.by=t$Date)
+t$port4_roll_mean <- apply.rolling(port4,60,gap=60,by=1,FUN="mean")
+t$port4_roll_vol <- apply.rolling(port4,60,gap=60,by=1,FUN="sd")
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_mean,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_mean,na.rm = TRUE)) 
+
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_vol,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port4_roll_vol,na.rm = TRUE))
+
+
+chart.RollingCorrelation(t$port1_roll_mean, t$port1_roll_vol,60)
+chart.RollingCorrelation(t$port2_roll_mean, t$port2_roll_vol,60)
+chart.RollingCorrelation(t$port3_roll_mean, t$port3_roll_vol,60)
+chart.RollingCorrelation(t$port4_roll_mean, t$port4_roll_vol,60)
+
+
+```
+
+
+
+
+
+
+setwd("F:/Dropbox/[IAQF_Max]/R")
+write_csv(t,"../data/data.csv")
+
+
+
+
+i=1
+if (t$signal[i]== 1){
+   aa <- GBSOption("c",t$Close[i+1],t$Close[i],(90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365,(t$Free_rate[i+1]/100),0,(t$VIX[i+1]/100))
+   bb <- GBSOption("c",t$Close[i],t$Close[i],0.246575342,(t$Free_rate[i]/100),0,(t$VIX[i]/100))
+  } else{ 
+   aa <- GBSOption("p",t$Close[i+1],t$Close[i],(90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365,(t$Free_rate[i+1]/100),0,(t$VIX[i+1]/100))
+   bb <- GBSOption("p",t$Close[i],t$Close[i],0.246575342,(t$Free_rate[i]/100),0,(t$VIX[i]/100))
+  }
+
+print(t$Close[i+1])
+print(t$Close[i])
+t$signal[i]
+print(aa@price)
+print(bb@price)
+print(aa@price-bb@price)
+
+EuropeanOption("put", t$Close[i+1], t$Close[i],0, (t$Free_rate[i]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100),0, 0)
+
+EuropeanOption("put", 110, 100,0, 0.05, 0.24, 0.2,0, 0)
+
+
+
+
+
+
+
+
+
+
+
+
+
+

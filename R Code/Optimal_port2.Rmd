@@ -1,0 +1,412 @@
+---
+title: "Optimal_port2"
+author: "Panther"
+date: "February 19, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Load Data
+
+```{r Load Data, message=FALSE}
+library(quanteda); library(tidyverse); library(TTR);library(ggplot2);library(scales); library(fOptions); library(pastecs); library(psych);library(crayon);library(PerformanceAnalytics);library(stats);library(RQuantLib);
+
+# here data read is being processed
+setwd("F:/Dropbox/[IAQF_Max]/R")
+
+#t <- read_csv("../data/data_div.csv")
+#t <- read_csv("../Data/data.csv")
+#t <- read_csv("F:/Dropbox/[IAQF]/Data/data.csv")
+# t$Date <- strptime(as.character(t$Date), "%m/%d/%Y")
+# format(t$Date, "%Y-%m-%d")
+# t$Date <- as.Date(t$Date)
+
+```
+
+#Process Data
+
+```{r Process Data}
+
+GSPC <- read_csv("../data/^GSPC.csv")
+Treasury <- read_csv("../data/DTB3.csv")
+VIX <- read_csv("../data/^VIX.csv")
+DIV <- read_csv("../data/Dividends.csv")
+DIV_M <- read_csv("../data/SP500_DIV_YIELD_MONTH.csv")
+
+# DIV$`SPX Index` <- strptime(as.character(DIV$`SPX Index`), "%m/%d/%Y")
+# format(DIV$`SPX Index`, "%Y-%m-%d")
+# DIV$`SPX Index` <- as.Date(DIV$`SPX Index`)
+# t <- t[-10]
+
+t<-cbind(GSPC,Treasury$DTB3[match(GSPC$Date,Treasury$DATE)])
+t<-cbind(t,VIX$Close[match(t$Date,VIX$Date)])
+t<-cbind(t,DIV$X2[match(t$Date,DIV$`SPX Index`)])
+
+t<-t[,c(1,5,8,9,10)]
+t<- t[-1:(-10054+250),]  # extra 120 for training signal, will remove later
+colnames(t)[3] <- "Free_rate"
+colnames(t)[4] <- "VIX"
+colnames(t)[5] <- "Div_rate_daily"
+t$Free_rate = as.numeric(as.character(t$Free_rate))
+t$Div_rate_daily = as.numeric(as.character(t$Div_rate_daily))
+
+```
+
+#Missing Data
+
+```{r Missing Data}
+
+#missing data of free rate
+temp <- which(is.na(t$Free_rate))
+for (i in temp)
+  t$Free_rate[i] <- mean(t$Free_rate[(i-5):(i+5)], na.rm=TRUE)
+
+temp <- which(is.na(t$Div_rate_daily))
+for (i in temp){
+  if (i<15)
+    t$Div_rate_daily[i] <- mean(t$Div_rate_daily[1:30], na.rm=TRUE)
+  else
+    t$Div_rate_daily[i] <- mean(t$Div_rate_daily[(i-15):(i+15)], na.rm=TRUE)}
+
+```
+
+#Smooth dividend daily rate as monthly rate
+
+```{r smooth dividend}
+
+t$Div_rate_monthly <- t$Div_rate_daily
+# t$POSIXct_Date <- as.POSIXct(t$Date)
+# DIV_M$POSIXct_Date <- as.POSIXct(DIV_M$Date)
+DIV_M <- DIV_M[ nrow(DIV_M):1, ]
+DIV_M<- DIV_M[-1:-1416,]
+temp <- c("2018-01-31",1.87)
+DIV_M <- rbind(DIV_M, temp)
+DIV_M$Value = as.numeric(DIV_M$Value)
+# 
+
+for (i in seq_along(t$Div_rate_daily)){
+  for (j in seq_along(DIV_M$Value)){
+    if (t$Date[i] <= DIV_M$Date[j+1] && t$Date[i] > DIV_M$Date[j]){
+      t$Div_rate_monthly[i] = DIV_M$Value[j+1]/100
+      break
+    }
+  }
+}
+
+```
+
+#Moving Average and momentum signal
+
+```{r momentum signal}
+
+t$SMA210 <- SMA(t$Close,210)
+t$SMA220 <- SMA(t$Close,220)
+t<- t[-1:-250,]      # here remove training 120
+for (k in seq_along(t$SMA220)){
+  if (t$SMA210[k]>t$SMA220[k])
+     t$signal[k] = 1            # signal = 1 is buy singal
+  else if (t$SMA210[k]<t$SMA220[k])
+     t$signal[k] = 0
+  else
+     t$signal[k] = t$singal[k-1]
+}
+
+
+```
+
+## Create portfolios
+Absolute Return = shift between one lag of close prices
+Percentage Return = Absolute Return / last day close price
+Relative Return = Percentage return * initiate price($100,000)
+We use Relative Return as analysis object
+
+#portfolio 1
+Buy/short 1 index on today's closing and close position next day
+Assume when you short today, you buy an index for paying back next day
+Recieve dividend while buying
+
+```{r portfolio 1}
+
+t$port1_absreturn[1] = NA
+#t$port1_Perreturn[1] = NA
+t$port1_Relreturn[1] = NA
+
+
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+  if (t$signal[i]== 1){
+     t$port1_absreturn[i+1] = (t$Close[i+1]-t$Close[i]+t$Close[i]*t$Div_rate_monthly[i]/365*as.numeric(difftime(t$Date[i+1],t$Date[i])))
+#     t$port1_Perreturn[i+1] = (t$Close[i+1]-t$Close[i]) / t$Close[i]
+     t$port1_Relreturn[i+1] = (t$Close[i+1]-t$Close[i]+t$Close[i]*t$Div_rate_monthly[i]/365*as.numeric(difftime(t$Date[i+1],t$Date[i]))) / t$Close[i] * 100000
+     }
+  else{
+     t$port1_absreturn[i+1] = t$Close[i]-t$Close[i+1]
+#     t$port1_Perreturn[i+1] = (t$Close[i]-t$Close[i+1]) / t$Close[i]
+     t$port1_Relreturn[i+1] = (t$Close[i]-t$Close[i+1]) / t$Close[i] * 100000
+     }
+}
+
+t$port1_Perreturn <- t$port1_Relreturn/100000
+```
+
+#portfolio 2
+Buy at the money call/put option(90 days maturity) on today's closing and close position next day
+Volatility is VIX
+Risk free rate is 90 days T-bill rate
+Consider dividends
+
+```{r portfolio 2}
+
+t$port2_absreturn[1] = NA
+#t$port2_Perreturn[1] = NA
+t$port2_Relreturn[1] = NA
+
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+
+  if (t$signal[i]== 1){
+    aa <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (365-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    bb <- EuropeanOption("call", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 1, (t$VIX[i]/100))
+    } else {
+    aa <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (365-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    bb <- EuropeanOption("put", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 1, (t$VIX[i]/100))
+  }
+     t$port2_absreturn[i+1] = aa$value-bb$value
+#     t$port2_Perreturn[i+1] = (aa$value-bb$value) / bb$value
+     t$port2_Relreturn[i+1] = (aa$value-bb$value) / bb$value * 100000
+}
+
+t$port2_Perreturn <- t$port2_Relreturn/100000
+
+```
+
+
+#portfolio 3
+Buy at the money straddle(90 days maturity) on today's closing and close position next day
+Volatility is VIX
+Risk free rate is 90 days T-bill rate
+Consider dividends
+
+
+```{r portfolio 3}
+
+t$port3_absreturn[1] = NA
+#t$port3_Perreturn[1] = NA
+t$port3_Relreturn[1] = NA
+
+#ca <- GBSOption("c",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+#cb <- GBSOption("p",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+#cc = ca@price + cb@price
+
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+    aa1 <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (365-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    aa2 <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (365-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    bb1 <- EuropeanOption("call", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 1, (t$VIX[i]/100))
+    bb2 <- EuropeanOption("put", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 1, (t$VIX[i]/100))
+
+    t$port3_absreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value)
+#    t$port3_Perreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)
+    t$port3_Relreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)*100000
+}
+
+t$port3_Perreturn <- t$port3_Relreturn/100000
+```
+
+
+#Dump first day NA return
+```{r}
+t <- t[-1,]
+```
+
+
+#Momentum effect of portfolio returns
+Obvious autocorrelation, large ARMA parameters
+
+```{r Momentum effect}
+
+acf(t$port1_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port1_Relreturn,lag.max = 50)
+
+acf(t$port2_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port2_Relreturn,lag.max = 50)
+
+acf(t$port3_Relreturn,lag.max = 20,type='correlation')
+pacf(t$port3_Relreturn,lag.max = 50)
+
+```
+
+# Scatter of RelReturn
+
+```{r Scatter Plot RelReturn}
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port1_Relreturn),size =1, shape= 1)
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port2_Relreturn),size =1, shape= 1)
+
+
+ggplot(t,aes(x=Date)) + 
+  geom_point(aes(y=port3_Relreturn),size =1, shape= 1)
+
+```
+
+
+#Statistics Comparison
+
+```{r Statistics table}
+
+base <- tt[,c(11,13,15)]
+#base <- t[,c(11,14,17)]
+colnames(base) <- c("port1_Relreturn","port2_Relreturn","port3_Relreturn")
+a1 <- as.xts(base[,1],t$Date)
+a2 <- as.xts(base[,2],t$Date)
+a3 <- as.xts(base[,3],t$Date)
+b <- as.xts(t[,3]/100,t$Date)
+c1 = SharpeRatio(a1,b,FUN = "StdDev")
+c2 = SharpeRatio(a2,b,FUN = "StdDev")
+c3 = SharpeRatio(a3,b,FUN = "StdDev")
+
+stat <- sapply(base,sum) %>%
+  rbind(sapply(base,mean)) %>%
+  rbind(sapply(base,mean)*252) %>%
+  rbind(sapply(base,var)) %>%
+  rbind(sapply(base,skew)) %>%
+  rbind(sapply(base,kurtosis)) %>%
+  rbind(c(c1,c2,c3))
+
+rownames(stat) <- c("sum","mean","annual mean","var","skew","kurtosis","sharp ratio")
+
+print(stat)
+
+```
+
+#Cumulative RelReturn
+See how the cost of options and straddles ruined your return
+
+
+```{r Cumulative Relreturn}
+
+t <- read_csv("../data/data_optimal.csv")
+tt <- read_csv("../data/data_final.csv")
+t <- t[-1,]
+tt <- tt[-1,]
+
+#t$port1_cum_Relreturn <- cumsum(t$port1_Relreturn)
+t$port2_cum_Relreturn <- cumsum(t$port2_Relreturn)
+#t$port3_cum_Relreturn <- cumsum(t$port3_Relreturn)
+t$initial <- cumsum(tt$port2_Relreturn)
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_cum_Relreturn,color="Optimal")) +
+  geom_line(aes(y=initial,color="Initial")) +
+  theme_bw() +
+  ggtitle("Cumulative Return comparison")
+
+
+```
+
+
+#Realized Volatility on Relreturn
+Realized Vol is limited, 10 years has upper boundary
+
+
+```{r Realized Volatility}
+
+t$port1_real_vol <- 252*cumsum(t$port1_Relreturn^2)/seq(length(t$port1_Relreturn)) %>% sqrt()
+t$port2_real_vol <- 252*cumsum(t$port2_Relreturn^2)/seq(length(t$port2_Relreturn)) %>% sqrt()
+t$port3_real_vol <- 252*cumsum(t$port3_Relreturn^2)/seq(length(t$port3_Relreturn)) %>% sqrt()
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_real_vol,color="Port1")) +
+  geom_line(aes(y=port2_real_vol,color="Port2")) +
+  geom_line(aes(y=port3_real_vol,color="Port3")) +
+  theme_bw() +
+  ggtitle("Realized Volatility in all time")
+
+```
+
+
+#Rolling Analysis annually(252 days)
+Rolling mean is smoother, bur going worse. 
+Rolling vlo is controlled. 
+Rolling correlation is towards positive, which is not we expecting.
+
+
+```{r Rolling Analysis annually}
+
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+port2 <- xts(x=t$port2_Relreturn, order.by=t$Date)
+port3 <- xts(x=t$port3_Relreturn, order.by=t$Date)
+
+t$port1_roll_mean <- apply.rolling(port1,252,gap=252,by=1,FUN="mean")
+t$port2_roll_mean <- apply.rolling(port2,252,gap=252,by=1,FUN="mean")
+t$port3_roll_mean <- apply.rolling(port3,252,gap=252,by=1,FUN="mean")
+
+t$port1_roll_vol <- apply.rolling(port1,252,gap=252,by=1,FUN="sd")
+t$port2_roll_vol <- apply.rolling(port2,252,gap=252,by=1,FUN="sd")
+t$port3_roll_vol <- apply.rolling(port3,252,gap=252,by=1,FUN="sd")
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_mean,na.rm = TRUE))
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_vol,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_vol,na.rm = TRUE))
+
+chart.RollingCorrelation(t$port1_roll_mean, t$port1_roll_vol,252)
+chart.RollingCorrelation(t$port2_roll_mean, t$port2_roll_vol,252)
+chart.RollingCorrelation(t$port3_roll_mean, t$port3_roll_vol,252)
+
+```
+
+#Rolling Analysis 60 days
+Rolling mean is smoother, bur going worse. 
+Rolling vlo is controlled. 
+Rolling correlation is towards positive, which is not we expecting.
+
+```{r Rolling Analysis 60 days}
+
+port1 <- xts(x=t$port1_Relreturn, order.by=t$Date)
+t$port1_roll_mean <- apply.rolling(port1,60,gap=60,by=1,FUN="mean")
+t$port1_roll_vol <- apply.rolling(port1,60,gap=60,by=1,FUN="sd")
+port2 <- xts(x=t$port2_Relreturn, order.by=t$Date)
+t$port2_roll_mean <- apply.rolling(port2,60,gap=60,by=1,FUN="mean")
+t$port2_roll_vol <- apply.rolling(port2,60,gap=60,by=1,FUN="sd")
+port3 <- xts(x=t$port3_Relreturn, order.by=t$Date)
+t$port3_roll_mean <- apply.rolling(port3,60,gap=60,by=1,FUN="mean")
+t$port3_roll_vol <- apply.rolling(port3,60,gap=60,by=1,FUN="sd")
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_mean,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_mean,na.rm = TRUE))
+
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port1_roll_vol,na.rm = TRUE)) 
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port2_roll_vol,na.rm = TRUE))
+ggplot(t,aes(x=Date)) + 
+  geom_line(aes(y=port3_roll_vol,na.rm = TRUE))
+
+chart.RollingCorrelation(t$port1_roll_mean, t$port1_roll_vol,60)
+chart.RollingCorrelation(t$port2_roll_mean, t$port2_roll_vol,60)
+chart.RollingCorrelation(t$port3_roll_mean, t$port3_roll_vol,60)
+
+```
+
+
+
+
+setwd("F:/Dropbox/[IAQF_Max]/R")
+write_csv(t,"../Data/data_optimal.csv")

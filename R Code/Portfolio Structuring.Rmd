@@ -1,0 +1,331 @@
+---
+title: "Portfolio Structuring"
+author: "Panther"
+date: "February 9, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Load Data
+
+```{r Load Data, message=FALSE}
+library(quanteda); library(tidyverse); library(TTR);library(ggplot2);library(scales); library(fOptions); library(pastecs); library(psych);library(crayon);library(PerformanceAnalytics);library(stats);library(RQuantLib);
+
+# here data read is being processed
+setwd("F:/Dropbox/[IAQF_Max]/R")
+
+#t <- read_csv("../data/data_div.csv")
+#t <- read_csv("../Data/data.csv")
+#t <- read_csv("F:/Dropbox/[IAQF]/Data/data.csv")
+# t$Date <- strptime(as.character(t$Date), "%m/%d/%Y")
+# format(t$Date, "%Y-%m-%d")
+# t$Date <- as.Date(t$Date)
+
+```
+
+#Process Data
+
+```{r Process Data}
+
+GSPC <- read_csv("../data/^GSPC.csv")
+Treasury <- read_csv("../data/DTB3.csv")
+VIX <- read_csv("../data/^VIX.csv")
+DIV <- read_csv("../data/Dividends.csv")
+DIV_M <- read_csv("../data/SP500_DIV_YIELD_MONTH.csv")
+
+# DIV$`SPX Index` <- strptime(as.character(DIV$`SPX Index`), "%m/%d/%Y")
+# format(DIV$`SPX Index`, "%Y-%m-%d")
+# DIV$`SPX Index` <- as.Date(DIV$`SPX Index`)
+# t <- t[-10]
+
+t<-cbind(GSPC,Treasury$DTB3[match(GSPC$Date,Treasury$DATE)])
+t<-cbind(t,VIX$Close[match(t$Date,VIX$Date)])
+t<-cbind(t,DIV$X2[match(t$Date,DIV$`SPX Index`)])
+
+t<-t[,c(1,5,8,9,10)]
+t<- t[-1:(-10054+120),]  # extra 120 for training signal, will remove later
+colnames(t)[3] <- "Free_rate"
+colnames(t)[4] <- "VIX"
+colnames(t)[5] <- "Div_rate_daily"
+t$Free_rate = as.numeric(as.character(t$Free_rate))
+t$Div_rate_daily = as.numeric(as.character(t$Div_rate_daily))
+
+```
+
+#Missing Data
+
+```{r Missing Data}
+
+sum(is.na(t))
+sum(is.na(t$Close))
+sum(is.na(t$Free_rate))
+sum(is.na(t$VIX))
+sum(is.na(t$Div_rate_daily))
+sum(is.na(DIV_M))
+
+which(is.na(t$Free_rate))
+#count(which(is.na(t$Free_rate)))
+which(is.na(t$VIX)) #don't worry, this missing 120 is not needed
+which(is.na(t$Div_rate_daily))
+
+#missing data of free rate
+temp <- which(is.na(t$Free_rate))
+for (i in temp)
+  t$Free_rate[i] <- mean(t$Free_rate[(i-5):(i+5)], na.rm=TRUE)
+
+t$Div_rate_daily[2] <- mean(t$Div_rate_daily[1:32], na.rm=TRUE)
+t$Div_rate_daily[7] <- mean(t$Div_rate_daily[1:32], na.rm=TRUE)
+temp <- which(is.na(t$Div_rate_daily))
+for (i in temp)
+  t$Div_rate_daily[i] <- mean(t$Div_rate_daily[(i-15):(i+15)], na.rm=TRUE)
+
+sum(is.na(t$Free_rate))
+sum(is.na(t$Div_rate_daily))
+
+```
+
+#Smooth dividend daily rate as monthly rate
+
+```{r smooth dividend}
+
+t$Div_rate_monthly <- t$Div_rate_daily
+# t$POSIXct_Date <- as.POSIXct(t$Date)
+# DIV_M$POSIXct_Date <- as.POSIXct(DIV_M$Date)
+DIV_M <- DIV_M[ nrow(DIV_M):1, ]
+DIV_M<- DIV_M[-1:-1416,]
+temp <- c("2018-01-31",1.87)
+DIV_M <- rbind(DIV_M, temp)
+DIV_M$Value = as.numeric(DIV_M$Value)
+# 
+# for (i in seq_along(t$Div_rate_daily)){
+#   if (i < 16)
+#     t$Div_rate_monthly[i] = mean(t$Div_rate_daily[i:(i+30)], na.rm=TRUE)
+#   else
+#     t$Div_rate_monthly[i] = mean(t$Div_rate_daily[(i-15):(i+15)], na.rm=TRUE)}
+# 
+# ggplot(t,aes(x=Date)) + 
+#   geom_line(aes(y=Div_rate_daily))
+# ggplot(t,aes(x=Date)) + 
+#   geom_line(aes(y=Div_rate_monthly)) 
+# 
+# stat.desc(t$Div_rate_daily)
+# describe(t$Div_rate_daily)
+# stat.desc(t$Div_rate_monthly)
+# describe(t$Div_rate_monthly)
+
+for (i in seq_along(t$Div_rate_daily)){
+  for (j in seq_along(DIV_M$Value)){
+    if (t$Date[i] <= DIV_M$Date[j+1] && t$Date[i] > DIV_M$Date[j]){
+      t$Div_rate_monthly[i] = DIV_M$Value[j+1]/100
+      break
+    }
+  }
+}
+
+```
+
+
+
+#Moving Average and momentum signal
+
+```{r momentum signal}
+
+t$SMA60 <- SMA(t$Close,60)
+t$SMA120 <- SMA(t$Close,120)
+t<- t[-1:-120,]     # here remove training 120
+for (i in seq_along(t$SMA120)){
+  if (t$SMA60[i]>t$SMA120[i])
+     t$signal[i] = 1            # signal = 1 is buy singal
+  else if (t$SMA60[i]<t$SMA120[i])
+     t$signal[i] = 0
+  else
+     t$signal[i] = t$singal[i-1]
+}
+
+```
+
+
+
+## Create portfolios
+Absolute Return = shift between one lag of close prices
+Percentage Return = Absolute Return / last day close price
+Relative Return = Percentage return * initiate price($100,000)
+We use Relative Return as analysis object
+
+#portfolio 1
+Buy/short 1 index on today's closing and close position next day
+Assume when you short today, you buy an index for paying back next day
+Recieve dividend while buying
+
+```{r portfolio 1}
+
+t$port1_absreturn[1] = NA
+#t$port1_Perreturn[1] = NA
+t$port1_Relreturn[1] = NA
+
+
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+  if (t$signal[i]== 1){
+     t$port1_absreturn[i+1] = (t$Close[i+1]-t$Close[i]+t$Close[i]*t$Div_rate_monthly[i]/365*as.numeric(difftime(t$Date[i+1],t$Date[i])))
+#     t$port1_Perreturn[i+1] = (t$Close[i+1]-t$Close[i]) / t$Close[i]
+     t$port1_Relreturn[i+1] = (t$Close[i+1]-t$Close[i]+t$Close[i]*t$Div_rate_monthly[i]/365*as.numeric(difftime(t$Date[i+1],t$Date[i]))) / t$Close[i] * 100000
+     }
+  else{
+     t$port1_absreturn[i+1] = t$Close[i]-t$Close[i+1]
+#     t$port1_Perreturn[i+1] = (t$Close[i]-t$Close[i+1]) / t$Close[i]
+     t$port1_Relreturn[i+1] = (t$Close[i]-t$Close[i+1]) / t$Close[i] * 100000
+     }
+}
+
+t$port1_Perreturn <- t$port1_Relreturn/100000
+```
+
+#portfolio 2
+Buy at the money call/put option(90 days maturity) on today's closing and close position next day
+Volatility is VIX
+Risk free rate is 90 days T-bill rate
+Consider dividends
+
+```{r portfolio 2}
+
+t$port2_absreturn[1] = NA
+#t$port2_Perreturn[1] = NA
+t$port2_Relreturn[1] = NA
+
+#if (t$signal[1] == 1) {
+#  cc <- GBSOption("c",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+#  } else {
+#  cc <- GBSOption("p",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+
+# for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+#
+#   if (t$signal[i]== 1){
+#      aa <- GBSOption("c",t$Close[i+1],t$Close[i],(90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365,(t$Free_rate[i+1]/100),0,(t$VIX[i+1]/100))
+#      bb <- GBSOption("c",t$Close[i],t$Close[i],0.246575342,(t$Free_rate[i]/100),0,(t$VIX[i]/100))
+#     } else{
+#      aa <- GBSOption("p",t$Close[i+1],t$Close[i],(90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365,(t$Free_rate[i+1]/100),0,(t$VIX[i+1]/100))
+#      bb <- GBSOption("p",t$Close[i],t$Close[i],0.246575342,(t$Free_rate[i]/100),0,(t$VIX[i]/100))
+#     }
+#      t$port2_absreturn[i+1] = aa@price-bb@price
+#      t$port2_Perreturn[i+1] = (aa@price-bb@price) / bb@price
+# #     t$port2_Relreturn[i+1] = t$port2_Perreturn[i+1] * t$Close[1]
+# }
+
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+
+  if (t$signal[i]== 1){
+    aa <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    bb <- EuropeanOption("call", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100))
+    } else {
+    aa <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    bb <- EuropeanOption("put", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100))
+  }
+     t$port2_absreturn[i+1] = aa$value-bb$value
+#     t$port2_Perreturn[i+1] = (aa$value-bb$value) / bb$value
+     t$port2_Relreturn[i+1] = (aa$value-bb$value) / bb$value * 100000
+}
+
+t$port2_Perreturn <- t$port2_Relreturn/100000
+
+```
+
+
+#portfolio 3
+Buy at the money straddle(90 days maturity) on today's closing and close position next day
+Volatility is VIX
+Risk free rate is 90 days T-bill rate
+Consider dividends
+
+
+```{r portfolio 3}
+
+t$port3_absreturn[1] = NA
+#t$port3_Perreturn[1] = NA
+t$port3_Relreturn[1] = NA
+
+#ca <- GBSOption("c",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+#cb <- GBSOption("p",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+#cc = ca@price + cb@price
+
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+    aa1 <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    aa2 <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), (90-as.numeric(difftime(t$Date[i+1],t$Date[i])))/365, (t$VIX[i+1]/100))
+    bb1 <- EuropeanOption("call", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100))
+    bb2 <- EuropeanOption("put", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 0.246575342, (t$VIX[i]/100))
+
+    t$port3_absreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value)
+#    t$port3_Perreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)
+    t$port3_Relreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)*100000
+}
+
+t$port3_Perreturn <- t$port3_Relreturn/100000
+```
+
+#portfolio 4
+Buy at the money straddle(90 days maturity but remain life decrease until rebalance at maturity)
+- on today's closing and close position next day
+Volatility is VIX
+Risk free rate is 90 days T-bill rate
+Consider dividends
+
+```{r portfolio 4}
+
+#t$port4_absreturn[1] = NA
+#t$port4_Perreturn[1] = NA
+t$port4_Relreturn[1] = NA
+
+#ca <- GBSOption("c",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+#cb <- GBSOption("p",t$Close[1],t$Close[1],0.246575342,(t$Free_rate[1]/100),0,(t$VIX[1]/100))
+#cc = ca@price + cb@price
+
+#date.lookup <- format(seq(as.Date("2000-01-02"), as.Date("2018-1-19"), by = "1 day"))
+#date.except <- subset(b, !(y %in% a$x))
+#match("2024-01-19", date.lookup)
+
+count=0   #count days passed
+
+for (i in seq_along(t$Close[1:(length(t$Close)-1)])){
+
+  if (as.numeric(difftime(t$Date[i+1],t$Date[i])) == 1){   #workday
+    count = count+1}
+  else {                                            # not workday
+    count = count+as.numeric(difftime(t$Date[i+1],t$Date[i])) }
+
+  if (count <= 89){
+    Remaina = 90 - count         # today's remain
+    Remainb = Remaina + 1}        # previous day's remain
+  else if (count >= 90) {       # expired already, adjuste to 90 days passed
+    Remaina = 0                 # today's remain
+    Remainb = 1                 # previous day's remain
+    count = 0 }                 # after expired, rebalance
+
+  aa1 <- EuropeanOption("call", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), 0.246575342*Remaina/90, (t$VIX[i+1]/100),0, 0)
+  aa2 <- EuropeanOption("put", t$Close[i+1], t$Close[i],t$Div_rate_monthly[i+1], (t$Free_rate[i+1]/100), 0.246575342*Remaina/90, (t$VIX[i+1]/100),0, 0)
+  bb1 <- EuropeanOption("call", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 0.246575342*Remainb/90, (t$VIX[i]/100),0, 0)
+  bb2 <- EuropeanOption("put", t$Close[i], t$Close[i],t$Div_rate_monthly[i], (t$Free_rate[i]/100), 0.246575342*Remainb/90, (t$VIX[i]/100),0, 0)
+
+
+#  t$port4_absreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value)
+#  t$port4_Perreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)
+  t$port4_Relreturn[i+1] = (aa1$value+aa2$value-bb1$value-bb2$value) / (bb1$value+bb2$value)*100000
+}
+
+t$port4_Perreturn <- t$port4_Relreturn/100000
+```
+
+
+#Dump first day NA return
+```{r}
+#t <- t[-1,]
+```
+
+x <- rep(NA, ncol(dat))
+dat <- rbind(x, dat)
+
+
+setwd("F:/Dropbox/[IAQF_Max]/R")
+write_csv(t,"../Data/data.csv")
+
